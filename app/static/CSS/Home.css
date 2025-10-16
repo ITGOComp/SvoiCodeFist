@@ -27,6 +27,22 @@ body {
     scroll-behavior: smooth;
 }
 
+/* Generic responsive helpers */
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
 .container {
     max-width: 1200px;
     margin: 0 auto;
@@ -1103,6 +1119,13 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
+/* Hide accident types distribution chart on mobile */
+@media (max-width: 768px) {
+    .accident-monitoring-section .chart-section {
+        display: none;
+    }
+}
+
 .editor-section {
     background: white;
     padding: 2rem;
@@ -1789,6 +1812,7 @@ body {
 }
 
 .info-bar {
+margin-bottom: 15px;
 background: white;
 box-shadow: var(--shadow);
 border-radius: var(--radius);

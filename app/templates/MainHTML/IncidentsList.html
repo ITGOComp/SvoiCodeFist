@@ -4,11 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Происшествия</title>
-</head>
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'CSS/Home.css' %}">
+  <script defer src="{% static 'JS/Main.js' %}"></script>
+  <style>
+    .page-header { margin: 1rem 0; }
+    .page-actions { margin: 1rem 0; }
+    .table { width: 100%; border-collapse: collapse; }
+    .table th, .table td { padding: 8px; border: 1px solid #E2E8F0; text-align: left; }
+    .table thead th { background: #F8FAFC; }
+  </style>
+  </head>
 <body>
-  <h1>Список происшествий</h1>
-  <p><a href="/">На главную</a></p>
-  <table border="1" cellpadding="6" cellspacing="0">
+  <div class="container">
+  <div class="page-header">
+    <h1>Список происшествий</h1>
+  </div>
+  <div class="page-actions"><a href="/">На главную</a></div>
+  <div class="table-responsive">
+  <table class="table">
     <thead>
       <tr>
         <th>ID</th>
@@ -36,6 +50,8 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
+  </div>
 </body>
 </html>
 
