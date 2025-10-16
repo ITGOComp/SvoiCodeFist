@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Новости - ЦОДД Смоленской области</title>
+  {% load static %}
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="{% static 'CSS/Home.css' %}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <div class="header-content">
+        <div class="brand">
+          <i class="fas fa-traffic-light"></i>
+          <span>ЦОДД Смоленской области</span>
+        </div>
+        <nav class="nav">
+          <a href="/"><i class="fas fa-home"></i> Главная</a>
+          <a href="/#map"><i class="fas fa-map"></i> Карта</a>
+          <a href="/#stats"><i class="fas fa-chart-bar"></i> Статистика</a>
+          <a href="/#appeal"><i class="fas fa-envelope"></i> Обращения</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h1>Новости и события</h1>
+        <p>Актуальная информация о дорожной ситуации и мероприятиях ЦОДД</p>
+      </div>
+      <div class="news-categories">
+        {% for category in categories %}
+        <div class="news-category-card">
+          <a href="{% url 'news_category_articles' category.id %}">
+            {% if category.image_url %}
+            <img src="{{ category.image_url }}" alt="{{ category.name }}" class="category-image">
+            {% else %}
+            <div class="category-placeholder">
+              <i class="fas fa-newspaper"></i>
+            </div>
+            {% endif %}
+            <h3>{{ category.name }}</h3>
+          </a>
+        </div>
+        {% empty %}
+        <p>Категории новостей пока не добавлены.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+</body>
+</html>

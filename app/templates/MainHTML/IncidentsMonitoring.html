@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Мониторинг происшествий</title>
+</head>
+<body>
+  <h1>Мониторинг происшествий</h1>
+  <p><a href="/">На главную</a></p>
+  <div>
+    <p>Всего: <strong>{{ total }}</strong></p>
+    <p>За 7 дней: <strong>{{ last_7_days }}</strong></p>
+  </div>
+  <h2>По статусам</h2>
+  <ul>
+    {% for r in by_status %}
+      <li>{{ r.status }}: {{ r.count }}</li>
+    {% empty %}
+      <li>Нет данных</li>
+    {% endfor %}
+  </ul>
+
+  <h2>По важности</h2>
+  <ul>
+    {% for r in by_severity %}
+      <li>{{ r.severity }}: {{ r.count }}</li>
+    {% empty %}
+      <li>Нет данных</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>
+
