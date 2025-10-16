@@ -4,7 +4,7 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render
-from .models import Schedule, Appeal, Incident, TrafficJam, Patrol, Camera, NewsCategory, Article, ChatThread, ChatMessage, AccidentType, AccidentData, AccidentStatistics, WeatherData, TrafficForecast, RoadWorks
+from .models import Schedule, Appeal, Incident, TrafficJam, Patrol, Camera, NewsCategory, Article, ChatThread, ChatMessage, AccidentType, AccidentData, AccidentStatistics, WeatherData, TrafficForecast, RoadWorks, Detector, VehiclePass, RouteCluster
 from django import forms
 from django.utils import timezone
 import json
@@ -13,6 +13,55 @@ from django.db.models.functions import Cast
 from django.db import models
 from django.shortcuts import render, get_object_or_404
 import json
+from django.utils.dateparse import parse_datetime
+from django.views.decorators.http import require_http_methods
+from django.db import transaction
+from datetime import datetime, timedelta
+from collections import defaultdict, Counter
+
+# Simple in-memory cache for OSRM routing between coordinate pairs
+_ROUTE_CACHE = {}
+_ROUTE_CACHE_MAX = 5000
+
+def _route_cache_set(key, value):
+    try:
+        if len(_ROUTE_CACHE) > _ROUTE_CACHE_MAX:
+            # Drop arbitrary items to keep memory bounded
+            for _ in range(1000):
+                try:
+                    _ROUTE_CACHE.pop(next(iter(_ROUTE_CACHE)))
+                except Exception:
+                    break
+        _ROUTE_CACHE[key] = value
+    except Exception:
+        pass
+
+def _osrm_route(a_lat, a_lon, b_lat, b_lon):
+    """Call OSRM public server to get road-constrained path between two points.
+    Returns list of [lat, lon]. Falls back to direct segment on failure.
+    """
+    key = f"{a_lat:.6f},{a_lon:.6f}|{b_lat:.6f},{b_lon:.6f}"
+    if key in _ROUTE_CACHE:
+        return _ROUTE_CACHE[key]
+    url = f"https://router.project-osrm.org/route/v1/driving/{a_lon},{a_lat};{b_lon},{b_lat}?overview=full&geometries=geojson"
+    try:
+        resp = requests.get(url, timeout=6)
+        if resp.status_code == 200:
+            data = resp.json()
+            routes = (data or {}).get('routes') or []
+            if routes:
+                geom = routes[0].get('geometry') or {}
+                coords = geom.get('coordinates') or []
+                if coords:
+                    path = [[lat, lon] for lon, lat in coords]
+                    _route_cache_set(key, path)
+                    return path
+    except Exception:
+        pass
+    # Fallback straight line
+    path = [[a_lat, a_lon], [b_lat, b_lon]]
+    _route_cache_set(key, path)
+    return path
 
 def main(request):
     categories = NewsCategory.objects.all()
@@ -170,6 +219,25 @@ def cameras_api(request):
                 'coordinates': coords,
             })
     return JsonResponse({'cameras': data})
+
+
+def detectors_api(request):
+    qs = Detector.objects.all().order_by('id')
+    data = []
+    for d in qs:
+        coords = d.coordinates or []
+        if isinstance(coords, str):
+            try:
+                coords = json.loads(coords)
+            except Exception:
+                coords = []
+        data.append({
+            'id': d.id,
+            'external_id': d.external_id,
+            'name': d.name,
+            'coordinates': coords,
+        })
+    return JsonResponse({'detectors': data})
 
 
 def news_categories(request):
@@ -754,3 +822,444 @@ def get_road_works(request):
             return JsonResponse({'error': str(e)}, status=500)
     
     return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
+# ---------------- Traffic analytics: ingestion, co-movement, clustering ----------------
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def ingest_detectors(request):
+    """Accept CSV or XLSX with detectors.
+    Supported formats:
+      - 4 columns: external_id, name, lat, lon
+      - 3 columns: name, lat, lon (name will also be used as external_id)
+    Creates/updates Detector entries.
+    """
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'ok': False, 'error': 'file is required'}, status=400)
+
+    created, updated = 0, 0
+    try:
+        # detectors expected order: external_id, name, lat, lon
+        if upload.name.lower().endswith('.csv'):
+            import io, csv
+            text = io.TextIOWrapper(upload.file, encoding='utf-8')
+            reader = csv.reader(text)
+            rows = []
+            first = True
+            for cols in reader:
+                if first:
+                    first = False  # skip header row entirely
+                    continue
+                rows.append(cols)
+        elif upload.name.lower().endswith(('.xlsx', '.xlsm', '.xltx', '.xltm')):
+            try:
+                from openpyxl import load_workbook
+            except Exception:
+                return JsonResponse({'ok': False, 'error': 'openpyxl not installed'}, status=400)
+            wb = load_workbook(upload, read_only=True, data_only=True)
+            ws = wb.active
+            rows = [list(r) for r in ws.iter_rows(min_row=2, values_only=True)]
+        else:
+            return JsonResponse({'ok': False, 'error': 'Unsupported file type'}, status=400)
+
+        with transaction.atomic():
+            for cols in rows:
+                # Normalize row to one of the supported schemas
+                cols = list(cols)
+                # Trim whitespace from string cells
+                cols = [c.strip() if isinstance(c, str) else c for c in cols]
+
+                external_id = ''
+                name = ''
+                lat = None
+                lon = None
+
+                if len(cols) >= 4:
+                    # external_id, name, lat, lon
+                    external_id = str(cols[0] or '').strip()
+                    name = str(cols[1] or '')
+                    lat = cols[2]
+                    lon = cols[3]
+                elif len(cols) >= 3:
+                    # name, lat, lon (use name as external_id)
+                    name = str(cols[0] or '')
+                    external_id = name.strip()
+                    lat = cols[1]
+                    lon = cols[2]
+                else:
+                    # Not enough columns
+                    continue
+
+                if not external_id:
+                    continue
+
+                coords = []
+                try:
+                    if lat is not None and lon is not None and str(lat) != '' and str(lon) != '':
+                        coords = [float(lat), float(lon)]
+                except Exception:
+                    coords = []
+
+                det, was_created = Detector.objects.update_or_create(
+                    external_id=external_id,
+                    defaults={'name': name or external_id, 'coordinates': coords}
+                )
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
+        return JsonResponse({'ok': True, 'created': created, 'updated': updated})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def ingest_passes(request):
+    """Accept CSV/XLSX with vehicle detections: detector_id, timestamp, vehicle_id, speed(optional)."""
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'ok': False, 'error': 'file is required'}, status=400)
+
+    created = 0
+    detector_cache = {d.external_id: d.id for d in Detector.objects.all()}
+
+    try:
+        # passes expected order: detector_id, timestamp, vehicle_id, speed(optional)
+        if upload.name.lower().endswith('.csv'):
+            import io, csv
+            text = io.TextIOWrapper(upload.file, encoding='utf-8')
+            reader = csv.reader(text)
+            rows = []
+            first = True
+            for cols in reader:
+                if first:
+                    first = False  # skip header row entirely
+                    continue
+                rows.append(cols)
+        elif upload.name.lower().endswith(('.xlsx', '.xlsm', '.xltx', '.xltm')):
+            try:
+                from openpyxl import load_workbook
+            except Exception:
+                return JsonResponse({'ok': False, 'error': 'openpyxl not installed'}, status=400)
+            wb = load_workbook(upload, read_only=True, data_only=True)
+            ws = wb.active
+            rows = [list(r) for r in ws.iter_rows(min_row=2, values_only=True)]
+        else:
+            return JsonResponse({'ok': False, 'error': 'Unsupported file type'}, status=400)
+
+        with transaction.atomic():
+            for cols in rows:
+                det_id = cols[0] if len(cols) > 0 else None
+                if det_id is None:
+                    continue
+                det_id = str(det_id)
+                detector_pk = detector_cache.get(det_id)
+                if not detector_pk:
+                    # auto-create detector without coordinates
+                    det = Detector.objects.create(external_id=det_id, name='')
+                    detector_cache[det.external_id] = det.id
+                    detector_pk = det.id
+
+                ts_raw = cols[1] if len(cols) > 1 else None
+                if isinstance(ts_raw, datetime):
+                    ts = ts_raw
+                else:
+                    ts = None
+                    if ts_raw is not None and ts_raw != '':
+                        try:
+                            ts = parse_datetime(str(ts_raw)) or datetime.fromisoformat(str(ts_raw))
+                        except Exception:
+                            ts = None
+
+                vehicle_id = str((cols[2] if len(cols) > 2 else '') or '').strip()
+                if not vehicle_id or not ts:
+                    continue
+                speed = cols[3] if len(cols) > 3 else None
+                try:
+                    speed = float(speed) if speed is not None and speed != '' else None
+                except Exception:
+                    speed = None
+
+                VehiclePass.objects.create(
+                    detector_id=detector_pk,
+                    vehicle_id=vehicle_id,
+                    timestamp=ts,
+                    speed_kmh=speed,
+                )
+                created += 1
+
+        return JsonResponse({'ok': True, 'created': created})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
+
+
+def _vehicle_path(vehicle_id, start=None, end=None):
+    qs = VehiclePass.objects.filter(vehicle_id=vehicle_id)
+    if start:
+        qs = qs.filter(timestamp__gte=start)
+    if end:
+        qs = qs.filter(timestamp__lte=end)
+    qs = qs.order_by('timestamp').values('detector_id', 'timestamp', 'speed_kmh')
+    path = [(r['detector_id'], r['timestamp'], r['speed_kmh']) for r in qs]
+    return path
+
+
+@require_http_methods(["GET"])
+def vehicle_path_api(request):
+    """Get vehicle path for a specific vehicle in a time window.
+    Params: vehicle_id, start (ISO), end (ISO).
+    Returns: path as list of detector IDs.
+    """
+    def _parse_iso_to_naive(value: str):
+        if not value:
+            return None
+        try:
+            dt = parse_datetime(value)
+            if dt is None:
+                value2 = value.replace('Z', '+00:00')
+                dt = datetime.fromisoformat(value2)
+        except Exception:
+            try:
+                dt = datetime.fromisoformat(value)
+            except Exception:
+                dt = None
+        if dt is None:
+            return None
+        try:
+            from django.utils import timezone as dj_tz
+            if dj_tz.is_aware(dt):
+                dt = dj_tz.make_naive(dt)
+        except Exception:
+            pass
+        return dt
+
+    vehicle_id = request.GET.get('vehicle_id')
+    if not vehicle_id:
+        return JsonResponse({'ok': False, 'error': 'vehicle_id is required'}, status=400)
+    
+    start = request.GET.get('start')
+    end = request.GET.get('end')
+    start_dt = _parse_iso_to_naive(start) if start else None
+    end_dt = _parse_iso_to_naive(end) if end else None
+    
+    try:
+        path_data = _vehicle_path(vehicle_id, start_dt, end_dt)
+        # Extract just the detector IDs for the path
+        path = [item[0] for item in path_data]
+        return JsonResponse({'ok': True, 'path': path})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
+
+
+@require_http_methods(["GET"])
+def comovement_api(request):
+    """Find vehicles co-moving with target vehicle.
+    Params: vehicle_id, k (min consecutive nodes), dt (sec tolerance), max_lead (nodes).
+    Optional: start, end ISO datetime.
+    """
+    vehicle_id = request.GET.get('vehicle_id')
+    if not vehicle_id:
+        return JsonResponse({'ok': False, 'error': 'vehicle_id is required'}, status=400)
+    k = int(request.GET.get('k', 3))
+    dt = int(request.GET.get('dt', 300))  # seconds
+    max_lead = int(request.GET.get('max_lead', 2))
+    start = request.GET.get('start')
+    end = request.GET.get('end')
+    start_dt = parse_datetime(start) if start else None
+    end_dt = parse_datetime(end) if end else None
+
+    target_path = _vehicle_path(vehicle_id, start_dt, end_dt)
+    if not target_path:
+        return JsonResponse({'ok': True, 'matches': []})
+
+    # Build index: detector_id -> list of (timestamp, vehicle_id)
+    det_ids = list({d for d, _, _ in target_path})
+    index = defaultdict(list)
+    window_start = target_path[0][1] - timedelta(seconds=dt)
+    window_end = target_path[-1][1] + timedelta(seconds=dt)
+    for vp in VehiclePass.objects.filter(detector_id__in=det_ids, timestamp__gte=window_start, timestamp__lte=window_end).values('detector_id', 'timestamp', 'vehicle_id'):
+        if vp['vehicle_id'] == vehicle_id:
+            continue
+        index[vp['detector_id']].append((vp['timestamp'], vp['vehicle_id']))
+
+    # For each candidate vehicle, walk along target path and check alignment
+    candidate_to_matches = defaultdict(list)
+    for det_id, ts, _ in target_path:
+        for ts2, cand in index.get(det_id, []):
+            if abs((ts2 - ts).total_seconds()) <= dt:
+                candidate_to_matches[cand].append((det_id, ts, ts2))
+
+    results = []
+    for cand, matches in candidate_to_matches.items():
+        # Sort by target timestamp and check for at least k consecutive detector matches
+        matches.sort(key=lambda x: x[1])
+        longest = 1
+        current = 1
+        lead_balance = 0  # positive if target ahead
+        for i in range(1, len(matches)):
+            prev_det, prev_t, prev_t2 = matches[i-1]
+            det, t, t2 = matches[i]
+            if det == prev_det:
+                continue
+            if (t - prev_t).total_seconds() >= 0:
+                current += 1
+                # update lead balance
+                lead_balance += 1 if (t - t2).total_seconds() < 0 else -1
+            else:
+                current = 1
+                lead_balance = 0
+            longest = max(longest, current)
+        if longest >= k and abs(lead_balance) <= max_lead:
+            start_t = matches[0][1]
+            end_t = matches[-1][1]
+            results.append({
+                'vehicle_id': cand,
+                'matched_nodes': longest,
+                'start_time': start_t.isoformat(),
+                'end_time': end_t.isoformat(),
+                'nodes': [m[0] for m in matches],
+            })
+
+    results.sort(key=lambda r: r['matched_nodes'], reverse=True)
+    return JsonResponse({'ok': True, 'matches': results})
+
+
+@require_http_methods(["GET"])
+def cluster_routes_api(request):
+    """Cluster routes in a time window; return top N popular paths with stats.
+    Params: start, end (ISO), top (N), min_len (min nodes).
+    """
+    def _parse_iso_to_naive(value: str):
+        if not value:
+            return None
+        # Accept 'Z' suffix and timezone offsets; convert to naive in server local time
+        try:
+            dt = parse_datetime(value)
+            if dt is None:
+                # Fallback: replace 'Z' with '+00:00' for Python fromisoformat
+                value2 = value.replace('Z', '+00:00')
+                dt = datetime.fromisoformat(value2)
+        except Exception:
+            # Last resort: try plain fromisoformat without changes
+            try:
+                dt = datetime.fromisoformat(value)
+            except Exception:
+                dt = None
+        if dt is None:
+            return None
+        # Make naive
+        try:
+            from django.utils import timezone as dj_tz
+            if dj_tz.is_aware(dt):
+                dt = dj_tz.make_naive(dt)
+        except Exception:
+            pass
+        return dt
+
+    start = request.GET.get('start')
+    end = request.GET.get('end')
+    if not start or not end:
+        return JsonResponse({'ok': False, 'error': 'start and end are required'}, status=400)
+    start_dt = _parse_iso_to_naive(start)
+    end_dt = _parse_iso_to_naive(end)
+    if start_dt is None or end_dt is None:
+        return JsonResponse({'ok': False, 'error': 'invalid datetime format'}, status=400)
+    top_n = int(request.GET.get('top', 10))
+    min_len = int(request.GET.get('min_len', 3))
+
+    # Build per-vehicle ordered paths in window
+    passes = VehiclePass.objects.filter(timestamp__gte=start_dt, timestamp__lte=end_dt).order_by('vehicle_id', 'timestamp').values('vehicle_id', 'detector_id', 'timestamp', 'speed_kmh')
+    vehicle_to_path = defaultdict(list)
+    for r in passes:
+        vehicle_to_path[r['vehicle_id']].append((r['detector_id'], r['timestamp'], r['speed_kmh']))
+
+    # Normalize paths by removing duplicates in a row and too short
+    path_counter = Counter()
+    path_stats = {}
+    for vid, path in vehicle_to_path.items():
+        if not path:
+            continue
+        normalized = []
+        prev = None
+        for det, ts, sp in path:
+            if prev is None or prev != det:
+                normalized.append((det, ts, sp))
+            prev = det
+        if len(normalized) < min_len:
+            continue
+        key = tuple([d for d, _, _ in normalized])
+        path_counter[key] += 1
+        # accumulate stats
+        start_ts = normalized[0][1]
+        end_ts = normalized[-1][1]
+        duration = (end_ts - start_ts).total_seconds()
+        speeds = [sp for _, _, sp in normalized if sp is not None]
+        if key not in path_stats:
+            path_stats[key] = {'vehicles': 0, 'durations': [], 'speeds': []}
+        path_stats[key]['vehicles'] += 1
+        path_stats[key]['durations'].append(duration)
+        path_stats[key]['speeds'].extend(speeds)
+
+    most_common = path_counter.most_common(top_n)
+    clusters = []
+    hours = max((end_dt - start_dt).total_seconds() / 3600.0, 1e-6)
+    for key, count in most_common:
+        stats = path_stats.get(key, {'vehicles': 0, 'durations': [], 'speeds': []})
+        avg_time = sum(stats['durations']) / len(stats['durations']) if stats['durations'] else None
+        avg_speed = sum(stats['speeds']) / len(stats['speeds']) if stats['speeds'] else None
+        clusters.append({
+            'path': list(key),
+            'vehicle_count': count,
+            'intensity_per_hour': count / hours,
+            'avg_speed_kmh': avg_speed,
+            'avg_travel_seconds': avg_time,
+        })
+
+    return JsonResponse({'ok': True, 'clusters': clusters})
+
+
+def traffic_analytics_page(request):
+    return render(request, 'MainHTML/TrafficAnalytics.html')
+
+
+@require_http_methods(["POST"])
+def route_snap_api(request):
+    """Accept JSON with segments: [[lat, lon], [lat, lon], ...].
+    Returns a polyline snapped to roads using OSRM.
+    Also supports multiple segments as { segments: [ [[lat,lon],...], [[lat,lon],...] ] }.
+    """
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'invalid JSON'}, status=400)
+
+    def _route_for_segment(seg):
+        if not isinstance(seg, list) or len(seg) < 2:
+            return []
+        merged = []
+        for i in range(len(seg) - 1):
+            a = seg[i]
+            b = seg[i+1]
+            if not (isinstance(a, list) and isinstance(b, list) and len(a) == 2 and len(b) == 2):
+                continue
+            a_lat, a_lon = float(a[0]), float(a[1])
+            b_lat, b_lon = float(b[0]), float(b[1])
+            part = _osrm_route(a_lat, a_lon, b_lat, b_lon)
+            if i == 0:
+                merged.extend(part)
+            else:
+                merged.extend(part[1:] if len(part) > 1 else part)
+        return merged
+
+    if isinstance(payload, dict) and 'segments' in payload:
+        out = []
+        for seg in payload.get('segments') or []:
+            out.append(_route_for_segment(seg))
+        return JsonResponse({'ok': True, 'polylines': out})
+
+    seg = payload if isinstance(payload, list) else []
+    polyline = _route_for_segment(seg)
+    return JsonResponse({'ok': True, 'polyline': polyline})

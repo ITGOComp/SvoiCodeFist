@@ -143,9 +143,9 @@ loginForm.addEventListener('submit', (e) => {
         if (data.success) {
             loginModal.style.display = 'none';
             showNotification('Вход выполнен успешно!', 'success');
-            
+
             currentUser = data.user;
-            
+
             loginBtn.style.display = 'none';
             userControls.style.display = 'flex';
             userDisplay.textContent = `${data.user.username} (${data.user.role})`;
@@ -156,7 +156,7 @@ loginForm.addEventListener('submit', (e) => {
                 adminPanelBtn.style.display = 'none';
                 editorPanelBtn.style.display = 'block';
             }
-            
+
             hideAllPanels();
         } else {
             errorMessage.textContent = 'Неправильное имя пользователя или пароль.';
@@ -240,11 +240,11 @@ function showNotification(message, type) {
     notification.className = `notification ${type}`;
     notification.innerHTML = `<span class="icon"><i class="fas fa-${type === 'success' ? 'check-circle' : 'info-circle'}"></i></span><span>${message}</span>`;
     document.body.appendChild(notification);
-    
+
     setTimeout(() => {
         notification.classList.add('show');
     }, 10);
-    
+
     setTimeout(() => {
         notification.classList.remove('show');
         setTimeout(() => {
@@ -261,9 +261,9 @@ const noAppealsMsg = `<div class="no-appeals">Обращения отсутст�
 
 function renderAppeals(targetElement) {
     if (!targetElement) return;
-    
+
     targetElement.innerHTML = '';
-    
+
     // Загружаем обращения из БД
     fetch('/api/appeals/')
         .then(response => response.json())
@@ -296,9 +296,9 @@ function renderAppeals(targetElement) {
 
 contactForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    
+
     const formData = new FormData(contactForm);
-    
+
     fetch('/appeal/', {
         method: 'POST',
         headers: {
@@ -343,7 +343,7 @@ calculateBtn.addEventListener('click', () => {
     const type = carTypeSelect.value;
     const distance = parseInt(distanceInput.value);
     const totalCost = (evacuatorSettings.baseRate + (distance * evacuatorSettings.kmRate)) * evacuatorSettings.multipliers[type];
-    
+
     let currentPrice = parseInt(priceDisplay.textContent.replace(/\s/g, '')) || 0;
     const step = (totalCost - currentPrice) / 60;
 
@@ -368,29 +368,35 @@ adminNavBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         adminNavBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        
+
         // Скрываем все вкладки
         const allViews = document.querySelectorAll('.admin-panel-content');
         allViews.forEach(view => {
             view.classList.remove('active');
             view.style.display = 'none';
         });
-        
+
         const targetViewId = btn.getAttribute('data-view');
         const targetView = document.getElementById(targetViewId);
         if (targetView) {
             targetView.classList.add('active');
             targetView.style.display = 'block';
         }
-        
+
         if (targetViewId === 'admin-main-view') {
             if (!isMapInitialized) {
-                DG.then(function () {
-                    adminMap = DG.map('admin-map', {
+                (function(){
+                    adminMap = L.map('admin-map', {
                         center: [54.782, 32.045],
                         zoom: 13,
-                        fullscreenControl: false
+                        attributionControl: false
                     });
+                    const adminAttr = L.control.attribution().addTo(adminMap);
+                    adminAttr.setPrefix('<a href="https://itgol.ru/">Фисташечки</a>');
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: 'Data by &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, under <a href="https://opendatacommons.org/licenses/odbl/">ODbL.</a>'
+                    }).addTo(adminMap);
 
                     const coordsInput = document.getElementById('object-coords');
                     let marker = null;
@@ -426,7 +432,7 @@ adminNavBtns.forEach(btn => {
                         if (marker) {
                             adminMap.removeLayer(marker);
                         }
-                        marker = DG.marker([lat, lng]).addTo(adminMap);
+                        marker = L.marker([lat, lng]).addTo(adminMap);
                     });
 
                     document.getElementById('add-object-form').addEventListener('submit', (e) => {
@@ -464,7 +470,7 @@ adminNavBtns.forEach(btn => {
 
                     renderTable();
                     isMapInitialized = true;
-                });
+                })();
             }
             if (adminMap) {
                 setTimeout(() => { adminMap.invalidateSize(); }, 100);
@@ -506,19 +512,24 @@ adminNavBtns.forEach(btn => {
 let trafficMap = null;
 let mapObjectsLayer = null;
 
-DG.then(function () {
-    trafficMap = DG.map('traffic-map', {
+(function(){
+    trafficMap = L.map('traffic-map', {
         center: [54.782, 32.045],
         zoom: 13,
-        fullscreenControl: false,
-        traffic: true
+        attributionControl: false
     });
+    const publicAttr = L.control.attribution().addTo(trafficMap);
+    publicAttr.setPrefix('<a href="https://itgol.ru/">Фисташечки</a>');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: 'Data by &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, under <a href="https://opendatacommons.org/licenses/odbl/">ODbL.</a>'
+    }).addTo(trafficMap);
 
-    const trafficLayer = DG.traffic().addTo(trafficMap);
-    const incidentLayer = DG.featureGroup();
-    const patrolLayer = DG.featureGroup();
-    const cameraLayer = DG.featureGroup();
-    mapObjectsLayer = DG.featureGroup().addTo(trafficMap);
+    const trafficLayer = L.featureGroup().addTo(trafficMap);
+    const incidentLayer = L.featureGroup();
+    const patrolLayer = L.featureGroup();
+    const cameraLayer = L.featureGroup();
+    mapObjectsLayer = L.featureGroup().addTo(trafficMap);
 
     const layers = {
         traffic: trafficLayer,
@@ -527,10 +538,10 @@ DG.then(function () {
         cameras: cameraLayer
     };
 
-    DG.marker([54.789, 32.06]).addTo(incidentLayer).bindPopup('ДТП: Столкновение');
-    DG.marker([54.78, 32.03]).addTo(incidentLayer).bindPopup('ДТП: Наезд на пешехода');
-    DG.marker([54.77, 32.05]).addTo(patrolLayer).bindPopup('Патруль ДПС');
-    DG.marker([54.79, 32.04]).addTo(cameraLayer).bindPopup('Камера контроля скорости');
+    L.marker([54.789, 32.06]).addTo(incidentLayer).bindPopup('ДТП: Столкновение');
+    L.marker([54.78, 32.03]).addTo(incidentLayer).bindPopup('ДТП: Наезд на пешехода');
+    L.marker([54.77, 32.05]).addTo(patrolLayer).bindPopup('Патруль ДПС');
+    L.marker([54.79, 32.04]).addTo(cameraLayer).bindPopup('Камера контроля скорости');
 
     document.querySelectorAll('.map-filter').forEach(button => {
         button.addEventListener('click', () => {
@@ -552,13 +563,13 @@ DG.then(function () {
     });
 
     loadMapObjects();
-});
+})();
 
 function loadMapObjects() {
     const objects = JSON.parse(localStorage.getItem('mapObjects')) || [];
     mapObjectsLayer.clearLayers();
     objects.forEach(obj => {
-        const marker = DG.marker(obj.coords).addTo(mapObjectsLayer).bindPopup(`${obj.type}: ${obj.description}`);
+        const marker = L.marker(obj.coords).addTo(mapObjectsLayer).bindPopup(`${obj.type}: ${obj.description}`);
     });
 }
 
@@ -751,6 +762,66 @@ uploadCsvBtn.addEventListener('click', () => {
     };
     reader.readAsText(file);
 });
+
+// Upload detectors (CSV/XLSX) to backend
+(function initTrafficUploads() {
+    const detectorsInput = document.getElementById('detectors-file');
+    const detectorsBtn = document.getElementById('upload-detectors-btn');
+    const passesInput = document.getElementById('passes-file');
+    const passesBtn = document.getElementById('upload-passes-btn');
+
+    async function postFile(url, file) {
+        const form = new FormData();
+        form.append('file', file);
+        const res = await fetch(url, {
+            method: 'POST',
+            body: form
+        });
+        const data = await res.json().catch(() => ({ ok: false, error: 'Invalid JSON' }));
+        if (!res.ok || !data.ok) {
+            const err = (data && (data.error || data.detail)) || `HTTP ${res.status}`;
+            throw new Error(err);
+        }
+        return data;
+    }
+
+    if (detectorsBtn && detectorsInput) {
+        detectorsBtn.addEventListener('click', async () => {
+            const file = detectorsInput.files && detectorsInput.files[0];
+            if (!file) {
+                showNotification('Выберите файл с датчиками (.csv/.xlsx).', 'info');
+                return;
+            }
+            try {
+                const result = await postFile('/api/traffic/ingest/detectors/', file);
+                const created = result.created || 0;
+                const updated = result.updated || 0;
+                showNotification(`Датчики загружены: создано ${created}, обновлено ${updated}.`, 'success');
+            } catch (e) {
+                console.error('Detectors upload failed:', e);
+                showNotification(`Ошибка загрузки датчиков: ${e.message || e}`, 'error');
+            }
+        });
+    }
+
+    if (passesBtn && passesInput) {
+        passesBtn.addEventListener('click', async () => {
+            const file = passesInput.files && passesInput.files[0];
+            if (!file) {
+                showNotification('Выберите файл с проездами ТС (.csv/.xlsx).', 'info');
+                return;
+            }
+            try {
+                const result = await postFile('/api/traffic/ingest/passes/', file);
+                const created = result.created || 0;
+                showNotification(`Проезды загружены: записей ${created}.`, 'success');
+            } catch (e) {
+                console.error('Passes upload failed:', e);
+                showNotification(`Ошибка загрузки проездов: ${e.message || e}`, 'error');
+            }
+        });
+    }
+})();
 
 const animateNumbers = () => {
     const values = document.querySelectorAll('.indicator-card .value');

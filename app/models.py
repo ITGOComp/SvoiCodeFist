@@ -200,3 +200,50 @@ class RoadWorks(models.Model):
 
     def __str__(self):
         return f"{self.count} дорожных работ"
+
+
+# --- Traffic graph and tracking models ---
+class Detector(models.Model):
+    """Physical/virtual sensor placed at a graph node.
+
+    coordinates format: [lat, lon]
+    """
+    external_id = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=200, blank=True)
+    coordinates = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Detector {self.external_id}"
+
+
+class VehiclePass(models.Model):
+    """Single detection event: vehicle passed detector at timestamp."""
+    detector = models.ForeignKey(Detector, on_delete=models.CASCADE, related_name='passes')
+    vehicle_id = models.CharField(max_length=100, db_index=True)
+    timestamp = models.DateTimeField(db_index=True)
+    speed_kmh = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['vehicle_id', 'timestamp']),
+            models.Index(fields=['detector', 'timestamp']),
+        ]
+
+    def __str__(self):
+        return f"{self.vehicle_id} @ {self.detector_id} at {self.timestamp}"
+
+
+class RouteCluster(models.Model):
+    """Represents a discovered popular route (sequence of detector ids as path)."""
+    # Store path as list of detector external_ids or database ids; using ints of Detector pk
+    path = models.JSONField(default=list, help_text="Список id детекторов (pk)")
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    vehicle_count = models.IntegerField(default=0)
+    avg_speed_kmh = models.FloatField(null=True, blank=True)
+    avg_travel_seconds = models.FloatField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Маршрут {len(self.path)} узлов, ТС: {self.vehicle_count}"

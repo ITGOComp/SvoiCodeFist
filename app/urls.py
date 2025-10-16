@@ -3,6 +3,7 @@ from . import views
 
 urlpatterns = [
     path('', views.main, name='main'),
+    path('analytics/traffic/', views.traffic_analytics_page, name='traffic_analytics'),
     path('appeal/', views.appeal_submit, name='appeal_submit'),
     path('incidents/', views.incidents_list, name='incidents_list'),
     path('monitoring/incidents/', views.incidents_monitoring, name='incidents_monitoring'),
@@ -10,6 +11,7 @@ urlpatterns = [
     path('api/traffic/', views.traffic_api, name='traffic_api'),
     path('api/patrols/', views.patrols_api, name='patrols_api'),
     path('api/cameras/', views.cameras_api, name='cameras_api'),
+    path('api/detectors/', views.detectors_api, name='detectors_api'),
     path('api/chat/send/', views.chat_send_message, name='chat_send_message'),
     path('api/chat/messages/', views.chat_thread_messages, name='chat_thread_messages'),
     path('news/', views.news_categories, name='news_categories'),
@@ -44,4 +46,11 @@ urlpatterns = [
     path('api/weather/', views.get_weather_data, name='get_weather_data'),
     path('api/traffic-forecast/', views.get_traffic_forecast, name='get_traffic_forecast'),
     path('api/road-works/', views.get_road_works, name='get_road_works'),
+    # Traffic ingestion and analytics
+    path('api/traffic/ingest/detectors/', views.ingest_detectors, name='ingest_detectors'),
+    path('api/traffic/ingest/passes/', views.ingest_passes, name='ingest_passes'),
+    path('api/traffic/comovement/', views.comovement_api, name='comovement_api'),
+    path('api/traffic/cluster-routes/', views.cluster_routes_api, name='cluster_routes_api'),
+    path('api/traffic/route-snap/', views.route_snap_api, name='route_snap_api'),
+    path('api/traffic/vehicle-path/', views.vehicle_path_api, name='vehicle_path_api'),
 ]

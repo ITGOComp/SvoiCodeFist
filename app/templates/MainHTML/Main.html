@@ -1,75 +1,172 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <!-- Метаданные документа -->
-    <meta charset="UTF-8"> <!-- Кодировка документа -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- Адаптивность для мобильных устройств -->
-    <title>ЦОДД Смоленской области</title> <!-- Заголовок вкладки -->
-    
-    {% load static %} <!-- Django: подключение статических файлов -->
-    
-    <!-- Стили -->
-    <link rel="stylesheet" href="{% static 'CSS/Home.css' %}"> <!-- Основной CSS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"> <!-- Иконки FontAwesome -->
-    
-    <!-- Скрипты -->
-    <script src="https://maps.api.2gis.ru/2.0/loader.js"></script> <!-- API карт 2GIS -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Библиотека для графиков -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ЦОДД Смоленской области</title>
+
+    {% load static %}
+
+    <link rel="stylesheet" href="{% static 'CSS/Home.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Секция мониторинга и карточки */
+        .accident-monitoring-section .container {
+            background-color: var(--dark-bg-card); /* Темный фон для всей секции */
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .indicator-card {
+            background: var(--dark-bg-card);
+            border: 1px solid var(--dark-border);
+        }
+
+        /* Цвета значений карточек по образцу */
+        .indicator-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        #total-accidents-value {
+             color: var(--value-color-accidents); /* Ярко-красный */
+        }
+        #injured-value {
+             color: var(--value-color-injured); /* Ярко-желтый */
+        }
+        #killed-value {
+             color: var(--value-color-killed); /* Ярко-зеленый */
+        }
+
+        /* Контейнер графика (для темного фона) */
+        .chart-section {
+            background-color: #20232a; /* Темный фон для области графика */
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+
+        /* Стили для кастомного тултипа (ПО КЛИКУ) - ИНФОРМАЦИЯ ПРИ НАЖАТИИ */
+        .chartjs-tooltip-custom {
+            opacity: 0;
+            position: absolute;
+            background: #3c4146; /* Фон тултипа (темно-серый) */
+            color: white;
+            border-radius: 8px;
+            padding: 15px;
+            pointer-events: none; /* Не перехватывает клики */
+            transition: all 0.1s ease;
+            z-index: 1000;
+            min-width: 200px;
+            max-width: 250px;
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .chartjs-tooltip-custom h4 {
+            margin: 0 0 5px;
+            font-size: 1rem;
+            font-weight: 400;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 5px;
+            color: #aaaaaa;
+            display: flex; /* Для выравнивания иконки */
+            align-items: center;
+        }
+        .chartjs-tooltip-custom p {
+            margin: 4px 0 0;
+            font-size: 0.9rem;
+            display: block;
+            color: #ffffff;
+        }
+        /* Стилизация для раздела "Кол-во" */
+        .chartjs-tooltip-custom .result-highlight {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-top: 5px;
+            line-height: 1;
+        }
+
+
+        /* *** АДАПТИВНОСТЬ *** */
+
+        @media (max-width: 768px) {
+            .chartjs-tooltip-custom {
+                min-width: 160px;
+                padding: 10px;
+            }
+            .chartjs-tooltip-custom h4 {
+                font-size: 0.9rem;
+            }
+            .chartjs-tooltip-custom p {
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+
 </head>
 <body>
-    <header class="site-header">
-        <div class="container">
-            <div class="header-content">
-                <div class="brand">
-                    <i class="fas fa-traffic-light"></i>
-                    <span>ЦОДД Смоленской области</span>
-                </div>
-                <nav class="nav" id="navMenu">
-                    <a href="#map"><i class="fas fa-map"></i> Карта</a>
-                    <a href="#news"><i class="fas fa-newspaper"></i> Новости</a>
-                    <a href="#chat"><i class="fas fa-comments"></i> Чат</a>
-                    <a href="#accident-monitoring"><i class="fas fa-chart-pie"></i> Мониторинг</a>
-                    <a href="#evacuator-calc"><i class="fas fa-truck-pickup"></i> Калькулятор</a>
-                    <a href="#contact"><i class="fas fa-phone"></i> Контакты</a>
-                </nav>
-                <div class="auth-section">
-                    <button class="btn btn-primary" id="loginBtn">
-                        <i class="fas fa-sign-in-alt"></i> Войти
-                    </button>
-                </div>
-                <div id="user-controls" style="display:none;">
-                    <div class="user-greeting">
-                        <i class="fas fa-user-circle"></i>
-                        <span id="user-display"></span>
-                        <div class="logout-dropdown">
-                            <button id="appealsBtn">
-                                <i class="fas fa-list-alt"></i> Обращения
-                            </button>
-                            <button id="adminPanelBtn" style="display:none;">
-                                <i class="fas fa-user-cog"></i> Панель админа
-                            </button>
-                            <button id="editorPanelBtn" style="display:none;">
-                                <i class="fas fa-edit"></i> Панель редактора
-                            </button>
-                            <button id="logoutBtn">
-                                <i class="fas fa-sign-out-alt"></i> Выйти
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <button class="btn mobile-menu-btn" id="hamburgerBtn">
-                    <i class="fas fa-bars"></i>
+<header class="site-header">
+    <div class="container">
+        <div class="header-content">
+            <div class="brand">
+                <i class="fas fa-traffic-light"></i>
+                <span>ЦОДД Смоленской области</span>
+            </div>
+            <nav class="nav" id="navMenu">
+                <a href="#map"><i class="fas fa-map"></i> Карта</a>
+                <a href="#news"><i class="fas fa-newspaper"></i> Новости</a>
+                <a href="#chat"><i class="fas fa-comments"></i> Чат</a>
+                <a href="#accident-monitoring"><i class="fas fa-chart-pie"></i> Мониторинг</a>
+                <a href="{% url 'traffic_analytics' %}"><i class="fas fa-route"></i> Аналитика трафика</a>
+                <a href="#evacuator-calc"><i class="fas fa-truck-pickup"></i> Калькулятор</a>
+                <a href="#contact"><i class="fas fa-phone"></i> Контакты</a>
+            </nav>
+            <div class="auth-section">
+                <button class="btn btn-primary" id="loginBtn">
+                    <i class="fas fa-sign-in-alt"></i> Войти
                 </button>
             </div>
+            <div id="user-controls" style="display:none;">
+                <div class="user-greeting">
+                    <i class="fas fa-user-circle"></i>
+                    <span id="user-display"></span>
+                    <div class="logout-dropdown">
+                        <button id="appealsBtn">
+                            <i class="fas fa-list-alt"></i> Обращения
+                        </button>
+                        <button id="adminPanelBtn" style="display:none;">
+                            <i class="fas fa-user-cog"></i> Панель админа
+                        </button>
+                        <button id="editorPanelBtn" style="display:none;">
+                            <i class="fas fa-edit"></i> Панель редактора
+                        </button>
+                        <button id="logoutBtn">
+                            <i class="fas fa-sign-out-alt"></i> Выйти
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <button class="btn mobile-menu-btn" id="hamburgerBtn">
+                <i class="fas fa-bars"></i>
+            </button>
         </div>
-    </header>
+    </div>
+</header>
 <main>
     <div class="container">
         <div class="info-bar">
             <div class="info-item" id="weather-info">
                 <span class="label">Погода, Смоленск</span>
                 <span class="value weather-value">
-                    <i id="weather-icon" class="fa-solid {% if weather %}{{ weather.icon }}{% else %}fa-sun{% endif %}"></i>
+                    <i id="weather-icon"
+                       class="fa-solid {% if weather %}{{ weather.icon }}{% else %}fa-sun{% endif %}"></i>
                     <span id="temperature">{% if weather %}{{ weather.temperature }}°{% else %}0°{% endif %}</span>
                     <span id="weather-description">{% if weather %}{{ weather.description }}{% else %}Данные не загружены{% endif %}</span>
                 </span>
@@ -98,953 +195,1219 @@
         </div>
     </div>
 </main>
-    <div id="accessibility-panel" class="accessibility-panel">
-        <button class="accessibility-panel-toggle" id="accessibility-toggle">
-            <i class="fas fa-eye"></i>
-        </button>
-        <h4>Настройки доступности</h4>
-        <div class="accessibility-control">
-            <label>Размер шрифта</label>
-            <div>
-                <button id="font-size-down">-</button>
-                <button id="font-size-up">+</button>
-            </div>
+<div id="accessibility-panel" class="accessibility-panel">
+    <button class="accessibility-panel-toggle" id="accessibility-toggle">
+        <i class="fas fa-eye"></i>
+    </button>
+    <h4>Настройки доступности</h4>
+    <div class="accessibility-control">
+        <label>Размер шрифта</label>
+        <div>
+            <button id="font-size-down">-</button>
+            <button id="font-size-up">+</button>
         </div>
-        <div class="accessibility-control">
-            <label>Интервал</label>
-            <div>
-                <button id="spacing-down">-</button>
-                <button id="spacing-up">+</button>
-            </div>
-        </div>
-        <div class="accessibility-control">
-            <label for="inverted-colors-toggle">Инвертировать цвета</label>
-            <input type="checkbox" id="inverted-colors-toggle">
-        </div>
-        <button class="btn btn-secondary btn-full" id="reset-accessibility">Сбросить</button>
     </div>
-        <section id="campaign" class="section campaign-section">
-        <div class="container">
-            <div class="section-header">
-                <h2>СОГБУ «ЦОДД» — Смоленское областное государственное бюджетное учреждение «Центр организации дорожного движения».</h2>
-                <p>Совершенствование и оптимизация системы управления в сфере транспорта на территории Смоленской области, а также выполнение мероприятий по организации дорожного движения.</p>
+    <div class="accessibility-control">
+        <label>Интервал</label>
+        <div>
+            <button id="spacing-down">-</button>
+            <button id="spacing-up">+</button>
+        </div>
+    </div>
+    <div class="accessibility-control">
+        <label for="inverted-colors-toggle">Инвертировать цвета</label>
+        <input type="checkbox" id="inverted-colors-toggle">
+    </div>
+    <button class="btn btn-secondary btn-full" id="reset-accessibility">Сбросить</button>
+</div>
+<section id="campaign" class="section campaign-section">
+    <div class="container">
+        <div class="section-header">
+            <h2>СОГБУ «ЦОДД» — Смоленское областное государственное бюджетное учреждение «Центр организации дорожного
+                движения».</h2>
+            <p>Совершенствование и оптимизация системы управления в сфере транспорта на территории Смоленской области, а
+                также выполнение мероприятий по организации дорожного движения.</p>
+        </div>
+        <div class="campaign-content">
+            <div class="campaign-card">
+                <i class="fas fa-shield-alt campaign-icon"></i>
+                <h3>Патрулирование</h3>
+                <p>Усиленные патрули на наиболее опасных участках дорог Смоленской области.</p>
             </div>
-            <div class="campaign-content">
-                <div class="campaign-card">
-                    <i class="fas fa-shield-alt campaign-icon"></i>
-                    <h3>Патрулирование</h3>
-                    <p>Усиленные патрули на наиболее опасных участках дорог Смоленской области.</p>
+            <div class="campaign-card">
+                <i class="fas fa-users campaign-icon"></i>
+                <h3>Образование</h3>
+                <p>Семинары и лекции для водителей по правилам дорожного движения.</p>
+            </div>
+            <div class="campaign-card">
+                <i class="fas fa-chart-line campaign-icon"></i>
+                <h3>Мониторинг</h3>
+                <p>Реальное время отслеживание ситуации на дорогах с помощью ГИБДД.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="map" class="section">
+    <div class="container">
+        <div class="section-header">
+            <h2>Интерактивная карта: Пробки и происшествия</h2>
+            <p>Мониторинг дорожной ситуации в Смоленской области на основе данных ГИБДД и ЦОДД</p>
+        </div>
+        <div class="map-controls">
+            <button class="map-filter active" data-layer="traffic">
+                <i class="fas fa-road"></i> Пробки
+            </button>
+            <button class="map-filter" data-layer="incidents">
+                <i class="fas fa-car-crash"></i> Происшествия
+            </button>
+            <button class="map-filter" data-layer="patrol">
+                <i class="fas fa-car"></i> Патрули
+            </button>
+            <button class="map-filter" data-layer="cameras">
+                <i class="fas fa-video"></i> Камеры
+            </button>
+            <button class="map-filter" data-layer="speed">
+                <i class="fas fa-gauge-high"></i> Скоростной режим
+            </button>
+        </div>
+        <div id="traffic-map" class="map-container"></div>
+    </div>
+</section>
+
+<section id="news" class="section news-section">
+    <div class="container">
+        <div class="section-header">
+            <h2>Новости и события</h2>
+            <p>Актуальная информация о дорожной ситуации и мероприятиях ЦОДД</p>
+        </div>
+        <div class="news-categories">
+            {% for category in categories %}
+            <div class="news-category-card">
+                <a href="{% url 'news_category_articles' category.id %}">
+                    {% if category.image_url %}
+                    <img src="{{ category.image_url }}" alt="{{ category.name }}" class="category-image">
+                    {% else %}
+                    <div class="category-placeholder">
+                        <i class="fas fa-newspaper"></i>
+                    </div>
+                    {% endif %}
+                    <h3>{{ category.name }}</h3>
+                </a>
+            </div>
+            {% empty %}
+            <p>Категории новостей пока не добавлены.</p>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<section id="accident-monitoring" class="section accident-monitoring-section">
+    <div class="container">
+        <h2>Показатели за текущий год</h2>
+        <div class="key-indicators">
+            <div class="indicator-card">
+                <h3>Кол-во ДТП с пострадавшими</h3>
+                <div class="value" id="total-accidents-value"
+                     data-target="{% if accident_stats %}{{ accident_stats.total_accidents }}{% else %}0{% endif %}">0
                 </div>
-                <div class="campaign-card">
-                    <i class="fas fa-users campaign-icon"></i>
-                    <h3>Образование</h3>
-                    <p>Семинары и лекции для водителей по правилам дорожного движения.</p>
+            </div>
+            <div class="indicator-card">
+                <h3>Ранено</h3>
+                <div class="value" id="injured-value"
+                     data-target="{% if accident_stats %}{{ accident_stats.injured }}{% else %}0{% endif %}">0
                 </div>
-                <div class="campaign-card">
-                    <i class="fas fa-chart-line campaign-icon"></i>
-                    <h3>Мониторинг</h3>
-                    <p>Реальное время отслеживание ситуации на дорогах с помощью ГИБДД.</p>
+            </div>
+            <div class="indicator-card">
+                <h3>Погибло</h3>
+                <div class="value" id="killed-value"
+                     data-target="{% if accident_stats %}{{ accident_stats.killed }}{% else %}0{% endif %}">0
                 </div>
             </div>
         </div>
-    </section>
 
-    <section id="map" class="section">
-        <div class="container">
-            <div class="section-header">
-                <h2>Интерактивная карта: Пробки и происшествия</h2>
-                <p>Мониторинг дорожной ситуации в Смоленской области на основе данных ГИБДД и ЦОДД</p>
+        <div class="divider"></div>
+
+        <div class="chart-section">
+            <h3>Распределение ДТП по типам и месяцам</h3>
+            <p>Нажмите на точку для деталей</p>
+            <div class="chart-legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #00BFFF;"></div>
+                    <span>Столкновение</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #FF4500;"></div>
+                    <span>Наезд на пешехода</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #32CD32;"></div>
+                    <span>Наезд на велосипедиста</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #DA70D6;"></div>
+                    <span>Наезд на препятствие</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #FFD700;"></div>
+                    <span>Наезд на стоящее ТС</span>
+                </div>
             </div>
-            <div class="map-controls">
-                <button class="map-filter active" data-layer="traffic">
-                    <i class="fas fa-road"></i> Пробки
-                </button>
-                <button class="map-filter" data-layer="incidents">
-                    <i class="fas fa-car-crash"></i> Происшествия
-                </button>
-                <button class="map-filter" data-layer="patrol">
-                    <i class="fas fa-car"></i> Патрули
-                </button>
-                <button class="map-filter" data-layer="cameras">
-                    <i class="fas fa-video"></i> Камеры
-                </button>
-                <button class="map-filter" data-layer="speed">
-                    <i class="fas fa-gauge-high"></i> Скоростной режим
-                </button>
+            <div class="chart-container">
+                <canvas id="accident-line-chart"></canvas>
             </div>
-            <div id="traffic-map" class="map-container"></div>
+            <a href="#map" class="btn-map">Смотреть ДТП на карте</a>
         </div>
-    </section>
+    </div>
+</section>
 
-    <section id="news" class="section news-section">
-        <div class="container">
-            <div class="section-header">
-                <h2>Новости и события</h2>
-                <p>Актуальная информация о дорожной ситуации и мероприятиях ЦОДД</p>
+<section id="evacuator-calc" class="section">
+    <div class="container">
+        <div class="section-header">
+            <h2>Калькулятор стоимости эвакуации</h2>
+            <p>Расчет примерной стоимости эвакуации транспортного средства</p>
+        </div>
+        <div class="calc-box">
+            <div class="calc-result" id="calc-result">
+                <div class="result-label">Примерная стоимость</div>
+                <div class="result-price-container">
+                    <span class="result-price" id="price">0</span>
+                    <span class="currency">₽</span>
+                </div>
             </div>
-            <div class="news-categories">
-                {% for category in categories %}
-                <div class="news-category-card">
-                    <a href="{% url 'news_category_articles' category.id %}">
-                        {% if category.image_url %}
-                        <img src="{{ category.image_url }}" alt="{{ category.name }}" class="category-image">
-                        {% else %}
-                        <div class="category-placeholder">
-                            <i class="fas fa-newspaper"></i>
+            <div class="calc-form">
+                <div class="form-group">
+                    <label for="car-type">Тип транспортного средства</label>
+                    <select id="car-type" class="form-control">
+                        <option value="car">Легковой автомобиль</option>
+                        <option value="suv">Внедорожник</option>
+                        <option value="truck">Грузовой автомобиль</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="distance">Расстояние (в км)</label>
+                    <input type="number" id="distance" class="form-control" value="10" min="1">
+                </div>
+                <button id="calculate-btn" class="btn btn-primary btn-full">Рассчитать</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="chat" class="section">
+    <div class="container">
+        <div class="section-header">
+            <h2>Чат с администраторами</h2>
+            <p>Задайте вопрос — администратор ответит в индивидуальном порядке</p>
+        </div>
+        <div class="chat-container">
+            <div class="chat-sidebar">
+                <div class="chat-header">
+                    <h3><i class="fas fa-comments"></i> Диалоги</h3>
+                    <button id="new-chat-btn" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus"></i> Новый чат
+                    </button>
+                </div>
+                <div id="chat-threads" class="chat-threads">
+                </div>
+            </div>
+            <div class="chat-main">
+                <div class="chat-messages-container">
+                    <div id="chat-messages" class="chat-messages">
+                        <div class="chat-welcome">
+                            <i class="fas fa-comments"></i>
+                            <h3>Добро пожаловать в чат!</h3>
+                            <p>Выберите диалог или создайте новый для начала общения с администраторами.</p>
                         </div>
-                        {% endif %}
-                        <h3>{{ category.name }}</h3>
-                    </a>
+                    </div>
                 </div>
-                {% empty %}
-                <p>Категории новостей пока не добавлены.</p>
-                {% endfor %}
+                <div class="chat-input-container">
+                    <div class="chat-input-header">
+                        <input type="text" id="chat-subject" class="form-control"
+                               placeholder="Тема диалога (необязательно)">
+                    </div>
+                    <div class="chat-input">
+                        <textarea id="chat-text" class="form-control" rows="3" placeholder="Напишите сообщение..."
+                                  disabled></textarea>
+                        <button id="chat-send" class="btn btn-primary" disabled>
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    <div id="chat-auth-hint" class="chat-hint" style="display:none;">
+                        <i class="fas fa-info-circle"></i>
+                        Чаты сохраняются только после авторизации.
+                    </div>
+                </div>
             </div>
         </div>
-    </section>
+    </div>
+</section>
 
-    <section id="accident-monitoring" class="section accident-monitoring-section">
-        <div class="container">
-            <h2>Показатели за текущий год</h2>
-            <div class="key-indicators">
-                <div class="indicator-card">
-                    <h3>Кол-во ДТП с пострадавшими</h3>
-                    <div class="value" id="total-accidents-value" data-target="{% if accident_stats %}{{ accident_stats.total_accidents }}{% else %}0{% endif %}">0</div>
-                </div>
-                <div class="indicator-card">
-                    <h3>Ранено</h3>
-                    <div class="value" id="injured-value" data-target="{% if accident_stats %}{{ accident_stats.injured }}{% else %}0{% endif %}">0</div>
-                </div>
-                <div class="indicator-card">
-                    <h3>Погибло</h3>
-                    <div class="value" id="killed-value" data-target="{% if accident_stats %}{{ accident_stats.killed }}{% else %}0{% endif %}">0</div>
-                </div>
-            </div>
-
-            <div class="divider"></div>
-
-            <div class="chart-section">
-                <h3>Распределение ДТП по типам</h3>
-                <div class="chart-legend">
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #36A2EB;"></div>
-                        <span>Столкновение</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #FF6384;"></div>
-                        <span>Наезд на пешехода</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #FF9F40;"></div>
-                        <span>Наезд на велосипедиста</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #4BC0C0;"></div>
-                        <span>Наезд на препятствие</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #9966FF;"></div>
-                        <span>Наезд на стоящее ТС</span>
-                    </div>
-                </div>
-                <div class="chart-container">
-                    <canvas id="accident-line-chart"></canvas>
-                </div>
-                <a href="#map" class="btn-map">Смотреть ДТП на карте</a>
-            </div>
+<section id="appeal" class="section">
+    <div class="container">
+        <div class="section-header">
+            <h2>Обращения</h2>
+            <p>Список обращений граждан, которые были отправлены через форму обратной связи.</p>
         </div>
-    </section>
+        <div class="appeals-list" id="appeals-list">
+        </div>
+    </div>
+</section>
 
-    <section id="evacuator-calc" class="section">
-        <div class="container">
-            <div class="section-header">
-                <h2>Калькулятор стоимости эвакуации</h2>
-                <p>Расчет примерной стоимости эвакуации транспортного средства</p>
-            </div>
-            <div class="calc-box">
-                <div class="calc-result" id="calc-result">
-                    <div class="result-label">Примерная стоимость</div>
-                    <div class="result-price-container">
-                        <span class="result-price" id="price">0</span>
-                        <span class="currency">₽</span>
-                    </div>
+<section id="contact" class="section contact-section">
+    <div class="container">
+        <div class="section-header">
+            <h2>Контакты и связь</h2>
+            <p>Свяжитесь с нами для получения дополнительной информации или сообщения о проблемах</p>
+        </div>
+        <div class="contact-content">
+            <div class="contact-info">
+                <div class="contact-item">
+                    <i class="fas fa-phone"></i>
+                    <h3>Телефон горячей линии</h3>
+                    <p>+7 (4812) 33-99-69<br>Рабочие часы: пн-чт 08:00–17:00; пт 08:00–15:00</p>
                 </div>
-                <div class="calc-form">
+                <div class="contact-item">
+                    <i class="fas fa-envelope"></i>
+                    <h3>Email</h3>
+                    <p>info@codd67.ru<br>support@codd67.ru</p>
+                </div>
+                <div class="contact-item">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <h3>Адрес</h3>
+                    <p>г. Смоленск, Большая Краснофлотская ул., 70<br>ЦОДД Смоленской области</p>
+                </div>
+            </div>
+            <div class="contact-form">
+                <h3>Форма обратной связи</h3>
+                <form id="contact-form" action="/appeal/" method="post">
+                    {% csrf_token %}
                     <div class="form-group">
-                        <label for="car-type">Тип транспортного средства</label>
-                        <select id="car-type" class="form-control">
-                            <option value="car">Легковой автомобиль</option>
-                            <option value="suv">Внедорожник</option>
-                            <option value="truck">Грузовой автомобиль</option>
+                        <label for="contact-name">Ваше имя</label>
+                        <input type="text" id="contact-name" name="name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="contact-email">Email</label>
+                        <input type="email" id="contact-email" name="email" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="contact-message">Сообщение</label>
+                        <textarea id="contact-message" name="message" class="form-control" rows="4" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Отправить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="editor-panel" class="section">
+    <div class="container">
+        <div class="section-header">
+            <h2>Панель редактора</h2>
+            <p>Управление контентом сайта.</p>
+        </div>
+        <div class="editor-section">
+            <h3>Управление новостями и статьями</h3>
+            <div id="editor-content-list">
+            </div>
+            <button class="btn btn-primary" style="margin-top: 1.5rem;" id="add-content-btn">
+                <i class="fas fa-plus"></i> Добавить новый материал
+            </button>
+
+            <div id="editor-form-container" class="edit-form-container">
+                <h4>Редактировать материал</h4>
+                <form id="content-edit-form">
+                    <input type="hidden" id="edit-content-id">
+                    <div class="form-group">
+                        <label for="edit-title">Заголовок</label>
+                        <input type="text" id="edit-title" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-text">Текст</label>
+                        <textarea id="edit-text" class="form-control" rows="5" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-edit-btn">Отмена</button>
+                </form>
+            </div>
+        </div>
+        <div class="monitoring-edit-form">
+            <h3>Редактировать показатели мониторинга</h3>
+            <form id="monitoring-edit-form">
+                <div class="form-group">
+                    <label for="edit-total-accidents">Кол-во ДТП с пострадавшими</label>
+                    <input type="number" id="edit-total-accidents" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-injured">Ранено</label>
+                    <input type="number" id="edit-injured" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-killed">Погибло</label>
+                    <input type="number" id="edit-killed" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">Сохранить</button>
+            </form>
+        </div>
+    </div>
+</section>
+
+<section id="admin-panel" class="section">
+    <div class="container">
+        <div class="section-header">
+            <h2>Панель администратора</h2>
+            <p>Инструменты для управления данными и объектами на карте.</p>
+        </div>
+        <div class="admin-nav">
+            <button class="admin-nav-btn active" data-view="admin-main-view">
+                <i class="fas fa-map-marker-alt"></i> Объекты на карте
+            </button>
+            <button class="admin-nav-btn" data-view="data-tools-view">
+                <i class="fas fa-database"></i> Управление данными
+            </button>
+            <button class="admin-nav-btn" data-view="analytics-view">
+                <i class="fas fa-chart-bar"></i> Аналитика
+            </button>
+            <button class="admin-nav-btn" data-view="appeals-admin-view">
+                <i class="fas fa-envelope-open-text"></i> Обращения
+            </button>
+            <button class="admin-nav-btn" data-view="users-view">
+                <i class="fas fa-users"></i> Управление пользователями
+            </button>
+            <button class="admin-nav-btn" data-view="evacuator-settings-view">
+                <i class="fas fa-truck-pickup"></i> Настройки эвакуатора
+            </button>
+            <button class="admin-nav-btn" data-view="weather-settings-view">
+                <i class="fas fa-cloud-sun"></i> Настройки погоды
+            </button>
+            <button class="admin-nav-btn" data-view="traffic-settings-view">
+                <i class="fas fa-road"></i> Настройки пробок
+            </button>
+            <button class="admin-nav-btn" data-view="accident-management-view">
+                <i class="fas fa-car-crash"></i> Управление ДТП
+            </button>
+            <button class="admin-nav-btn" data-view="news-management-view">
+                <i class="fas fa-newspaper"></i> Управление новостями
+            </button>
+            <button class="admin-nav-btn" data-view="appeals-management-view">
+                <i class="fas fa-envelope"></i> Управление обращениями
+            </button>
+            <button class="admin-nav-btn" data-view="chat-management-view">
+                <i class="fas fa-comments"></i> Управление чатом
+            </button>
+        </div>
+        <div id="admin-main-view" class="active admin-panel-content">
+            <div class="add-object-form">
+                <h3>Добавить объект на карту</h3>
+                <form id="add-object-form">
+                    <div class="form-group">
+                        <label for="object-type">Тип объекта</label>
+                        <select id="object-type" class="form-control" required>
+                            <option value="traffic-light">Светофор</option>
+                            <option value="camera">Камера</option>
+                            <option value="road-sign">Дорожный знак</option>
+                            <option value="incident">Происшествие</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="distance">Расстояние (в км)</label>
-                        <input type="number" id="distance" class="form-control" value="10" min="1">
+                        <label for="object-description">Описание</label>
+                        <textarea id="object-description" class="form-control" rows="3" required></textarea>
                     </div>
-                    <button id="calculate-btn" class="btn btn-primary btn-full">Рассчитать</button>
+                    <div class="form-group">
+                        <label for="object-coords">Координаты</label>
+                        <input type="text" id="object-coords" class="form-control" readonly required>
+                        <p class="coordinates">Нажмите на карту, чтобы выбрать местоположение.</p>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-full">Добавить объект</button>
+                </form>
+            </div>
+            <div id="admin-map" class="admin-map-container"></div>
+        </div>
+        <div id="data-tools-view" class="data-tools-container admin-panel-content">
+            <div class="data-section">
+                <h3>Редактировать объекты</h3>
+                <table class="data-table" id="data-table">
+                    <thead>
+                    <tr>
+                        <th>Тип</th>
+                        <th>Описание</th>
+                        <th>Координаты</th>
+                        <th>Действия</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+            <div class="data-section">
+                <h3>Загрузка данных</h3>
+                <div class="file-upload-section">
+                    <label for="csv-file">Загрузить CSV-файл (ДТП)</label>
+                    <input type="file" id="csv-file" accept=".csv" class="form-control">
+                    <button id="upload-csv-btn" class="btn btn-secondary" style="margin-top: 1rem;">
+                        <i class="fas fa-upload"></i> Загрузить
+                    </button>
+                    <p style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.5rem;">Формат:
+                        type,injured,killed</p>
+                </div>
+                <div class="file-upload-section" style="margin-top: 1rem;">
+                    <h4>Датчики дорожной сети</h4>
+                    <input type="file" id="detectors-file" accept=".csv,.xlsx" class="form-control">
+                    <button id="upload-detectors-btn" class="btn btn-secondary" style="margin-top: 0.5rem;">
+                        <i class="fas fa-upload"></i> Загрузить датчики
+                    </button>
+                    <p style="font-size: 0.8rem; color: var(--text-light);">Ожидаемые колонки: external_id,name,lat,lon
+                        (или ID_детектора, Название, широта, долгота)</p>
+                </div>
+                <div class="file-upload-section" style="margin-top: 1rem;">
+                    <h4>Проезды транспортных средств</h4>
+                    <input type="file" id="passes-file" accept=".csv,.xlsx" class="form-control">
+                    <button id="upload-passes-btn" class="btn btn-secondary" style="margin-top: 0.5rem;">
+                        <i class="fas fa-upload"></i> Загрузить проезды
+                    </button>
+                    <p style="font-size: 0.8rem; color: var(--text-light);">Колонки: detector_id/ID_детектора,
+                        timestamp/Временная_метка, vehicle_id/Идентификатор_ТС, speed/Скорость_прохождения</p>
                 </div>
             </div>
         </div>
-    </section>
-
-    <section id="chat" class="section">
-        <div class="container">
-            <div class="section-header">
-                <h2>Чат с администраторами</h2>
-                <p>Задайте вопрос — администратор ответит в индивидуальном порядке</p>
+        <div id="analytics-view" class="analytics-chart-container admin-panel-content">
+            <h3>Аналитика</h3>
+            <div class="chart-container">
+                <canvas id="admin-analytics-chart"></canvas>
             </div>
-            <div class="chat-container">
-                <div class="chat-sidebar">
-                    <div class="chat-header">
-                        <h3><i class="fas fa-comments"></i> Диалоги</h3>
-                        <button id="new-chat-btn" class="btn btn-primary btn-sm">
-                            <i class="fas fa-plus"></i> Новый чат
-                        </button>
-                    </div>
-                    <div id="chat-threads" class="chat-threads">
-                        <!-- Список диалогов будет загружен динамически -->
-                    </div>
-                </div>
-                <div class="chat-main">
-                    <div class="chat-messages-container">
-                        <div id="chat-messages" class="chat-messages">
-                            <div class="chat-welcome">
-                                <i class="fas fa-comments"></i>
-                                <h3>Добро пожаловать в чат!</h3>
-                                <p>Выберите диалог или создайте новый для начала общения с администраторами.</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="chat-input-container">
-                        <div class="chat-input-header">
-                            <input type="text" id="chat-subject" class="form-control" placeholder="Тема диалога (необязательно)">
-                        </div>
-                        <div class="chat-input">
-                            <textarea id="chat-text" class="form-control" rows="3" placeholder="Напишите сообщение..." disabled></textarea>
-                            <button id="chat-send" class="btn btn-primary" disabled>
-                                <i class="fas fa-paper-plane"></i>
-                            </button>
-                        </div>
-                        <div id="chat-auth-hint" class="chat-hint" style="display:none;">
-                            <i class="fas fa-info-circle"></i>
-                            Чаты сохраняются только после авторизации.
-                        </div>
-                    </div>
-                </div>
+            <button id="edit-dpt-data-btn" class="btn btn-primary" style="margin-top: 1rem;">
+                <i class="fas fa-edit"></i> Редактировать распределение ДТП
+            </button>
+        </div>
+        <div id="appeals-admin-view" class="appeals-list admin-panel-content" style="display: none; margin-top: 0;">
+            <h3>Список обращений</h3>
+            <div id="appeals-list-admin" class="appeals-list" style="margin-top: 0; padding: 0; box-shadow: none;">
             </div>
         </div>
-    </section>
-
-    <section id="appeal" class="section">
-        <div class="container">
-            <div class="section-header">
-                <h2>Обращения</h2>
-                <p>Список обращений граждан, которые были отправлены через форму обратной связи.</p>
-            </div>
-            <div class="appeals-list" id="appeals-list">
-                </div>
-        </div>
-    </section>
-
-    <section id="contact" class="section contact-section">
-        <div class="container">
-            <div class="section-header">
-                <h2>Контакты и связь</h2>
-                <p>Свяжитесь с нами для получения дополнительной информации или сообщения о проблемах</p>
-            </div>
-            <div class="contact-content">
-                <div class="contact-info">
-                    <div class="contact-item">
-                        <i class="fas fa-phone"></i>
-                        <h3>Телефон горячей линии</h3>
-                        <p>+7 (4812) 33-99-69<br>Рабочие часы: пн-чт 08:00–17:00; пт 08:00–15:00</p>
-                    </div>
-                    <div class="contact-item">
-                        <i class="fas fa-envelope"></i>
-                        <h3>Email</h3>
-                        <p>info@codd67.ru<br>support@codd67.ru</p>
-                    </div>
-                    <div class="contact-item">
-                        <i class="fas fa-map-marker-alt"></i>
-                        <h3>Адрес</h3>
-                        <p>г. Смоленск, Большая Краснофлотская ул., 70<br>ЦОДД Смоленской области</p>
-                    </div>
-                </div>
-                <div class="contact-form">
-                    <h3>Форма обратной связи</h3>
-                    <form id="contact-form" action="/appeal/" method="post">
-                        {% csrf_token %}
+        <div id="users-view" class="admin-panel-content">
+            <div class="data-section">
+                <h3>Управление пользователями</h3>
+                <table class="data-table" id="users-table">
+                    <thead>
+                    <tr>
+                        <th>Имя пользователя</th>
+                        <th>Роль</th>
+                        <th>Действия</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+                <div class="add-object-form" style="margin-top: 2rem;">
+                    <h3>Добавить редактора</h3>
+                    <form id="add-user-form">
                         <div class="form-group">
-                            <label for="contact-name">Ваше имя</label>
-                            <input type="text" id="contact-name" name="name" class="form-control" required>
+                            <label for="new-username">Имя пользователя</label>
+                            <input type="text" id="new-username" class="form-control" required>
                         </div>
                         <div class="form-group">
-                            <label for="contact-email">Email</label>
-                            <input type="email" id="contact-email" name="email" class="form-control" required>
+                            <label for="new-password">Пароль</label>
+                            <input type="password" id="new-password" class="form-control" required>
                         </div>
-                        <div class="form-group">
-                            <label for="contact-message">Сообщение</label>
-                            <textarea id="contact-message" name="message" class="form-control" rows="4" required></textarea>
-                        </div>
-                        <button type="submit" class="btn btn-primary">Отправить</button>
+                        <button type="submit" class="btn btn-primary btn-full">Добавить</button>
                     </form>
                 </div>
             </div>
         </div>
-    </section>
-    
-    <section id="editor-panel" class="section">
-        <div class="container">
-            <div class="section-header">
-                <h2>Панель редактора</h2>
-                <p>Управление контентом сайта.</p>
-            </div>
-            <div class="editor-section">
-                <h3>Управление новостями и статьями</h3>
-                <div id="editor-content-list">
-                    </div>
-                <button class="btn btn-primary" style="margin-top: 1.5rem;" id="add-content-btn">
-                    <i class="fas fa-plus"></i> Добавить новый материал
-                </button>
-
-                <div id="editor-form-container" class="edit-form-container">
-                    <h4>Редактировать материал</h4>
-                    <form id="content-edit-form">
-                        <input type="hidden" id="edit-content-id">
-                        <div class="form-group">
-                            <label for="edit-title">Заголовок</label>
-                            <input type="text" id="edit-title" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="edit-text">Текст</label>
-                            <textarea id="edit-text" class="form-control" rows="5" required></textarea>
-                        </div>
-                        <button type="submit" class="btn btn-primary">Сохранить</button>
-                        <button type="button" class="btn btn-secondary" id="cancel-edit-btn">Отмена</button>
-                    </form>
-                </div>
-            </div>
-            <div class="monitoring-edit-form">
-                <h3>Редактировать показатели мониторинга</h3>
-                <form id="monitoring-edit-form">
+        <div id="evacuator-settings-view" class="admin-panel-content">
+            <div class="data-section">
+                <h3>Настройки калькулятора эвакуации</h3>
+                <form id="evacuator-settings-form">
                     <div class="form-group">
-                        <label for="edit-total-accidents">Кол-во ДТП с пострадавшими</label>
-                        <input type="number" id="edit-total-accidents" class="form-control" required>
+                        <label for="base-rate">Базовая ставка</label>
+                        <input type="number" id="base-rate" class="form-control" required>
                     </div>
                     <div class="form-group">
-                        <label for="edit-injured">Ранено</label>
-                        <input type="number" id="edit-injured" class="form-control" required>
+                        <label for="km-rate">Ставка за км</label>
+                        <input type="number" id="km-rate" class="form-control" required>
                     </div>
                     <div class="form-group">
-                        <label for="edit-killed">Погибло</label>
-                        <input type="number" id="edit-killed" class="form-control" required>
+                        <label for="car-multiplier">Множитель для легкового автомобиля</label>
+                        <input type="number" id="car-multiplier" class="form-control" step="0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="suv-multiplier">Множитель для внедорожника</label>
+                        <input type="number" id="suv-multiplier" class="form-control" step="0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="truck-multiplier">Множитель для грузового автомобиля</label>
+                        <input type="number" id="truck-multiplier" class="form-control" step="0.1" required>
                     </div>
                     <button type="submit" class="btn btn-primary btn-full">Сохранить</button>
                 </form>
             </div>
         </div>
-    </section>
-
-    <section id="admin-panel" class="section">
-        <div class="container">
-            <div class="section-header">
-                <h2>Панель администратора</h2>
-                <p>Инструменты для управления данными и объектами на карте.</p>
+        <div id="traffic-settings-view" class="admin-panel-content">
+            <div class="data-section">
+                <h3>Настройки цветов пробок</h3>
+                <form id="traffic-settings-form">
+                    <div class="form-group">
+                        <label>Цвет для низкого трафика (0-3 балла)</label>
+                        <div class="traffic-color-picker">
+                            <input type="color" id="low-traffic-color" class="color-input">
+                            <span id="low-traffic-color-value">#00FF00</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Цвет для среднего трафика (4-6 баллов)</label>
+                        <div class="traffic-color-picker">
+                            <input type="color" id="medium-traffic-color" class="color-input">
+                            <span id="medium-traffic-color-value">#FFFF00</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Цвет для высокого трафика (7-9 баллов)</label>
+                        <div class="traffic-color-picker">
+                            <input type="color" id="high-traffic-color" class="color-input">
+                            <span id="high-traffic-color-value">#FF0000</span>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-full">Сохранить</button>
+                </form>
             </div>
-            <div class="admin-nav">
-                <button class="admin-nav-btn active" data-view="admin-main-view">
-                    <i class="fas fa-map-marker-alt"></i> Объекты на карте
-                </button>
-                <button class="admin-nav-btn" data-view="data-tools-view">
-                    <i class="fas fa-database"></i> Управление данными
-                </button>
-                <button class="admin-nav-btn" data-view="analytics-view">
-                    <i class="fas fa-chart-bar"></i> Аналитика
-                </button>
-                <button class="admin-nav-btn" data-view="appeals-admin-view">
-                    <i class="fas fa-envelope-open-text"></i> Обращения
-                </button>
-                <button class="admin-nav-btn" data-view="users-view">
-                    <i class="fas fa-users"></i> Управление пользователями
-                </button>
-                <button class="admin-nav-btn" data-view="evacuator-settings-view">
-                    <i class="fas fa-truck-pickup"></i> Настройки эвакуатора
-                </button>
-                <button class="admin-nav-btn" data-view="weather-settings-view">
-                    <i class="fas fa-cloud-sun"></i> Настройки погоды
-                </button>
-                <button class="admin-nav-btn" data-view="traffic-settings-view">
-                    <i class="fas fa-road"></i> Настройки пробок
-                </button>
-                <button class="admin-nav-btn" data-view="accident-management-view">
-                    <i class="fas fa-car-crash"></i> Управление ДТП
-                </button>
-                <button class="admin-nav-btn" data-view="news-management-view">
-                    <i class="fas fa-newspaper"></i> Управление новостями
-                </button>
-                <button class="admin-nav-btn" data-view="appeals-management-view">
-                    <i class="fas fa-envelope"></i> Управление обращениями
-                </button>
-                <button class="admin-nav-btn" data-view="chat-management-view">
-                    <i class="fas fa-comments"></i> Управление чатом
-                </button>
+        </div>
+        <div id="weather-settings-view" class="admin-panel-content">
+            <div class="data-section">
+                <h3>Управление данными в реальном времени</h3>
+                <div class="real-time-controls">
+                    <div class="control-group">
+                        <h4>Погодные данные</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="current-temp">Текущая температура</label>
+                                <input type="number" id="current-temp" class="form-control" placeholder="23">
+                            </div>
+                            <div class="form-group">
+                                <label for="current-weather">Текущая погода</label>
+                                <input type="text" id="current-weather" class="form-control" placeholder="Ясно">
+                            </div>
+                            <div class="form-group">
+                                <label for="current-weather-icon">Иконка погоды</label>
+                                <select id="current-weather-icon" class="form-control">
+                                    <option value="fa-sun">Солнце</option>
+                                    <option value="fa-cloud">Облачно</option>
+                                    <option value="fa-cloud-rain">Дождь</option>
+                                    <option value="fa-snowflake">Снег</option>
+                                    <option value="fa-cloud-sun">Переменная облачность</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <h4>Дорожная ситуация</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="current-speed">Скорость потока</label>
+                                <input type="number" id="current-speed" class="form-control" placeholder="76">
+                            </div>
+                            <div class="form-group">
+                                <label for="current-works">Дорожные работы</label>
+                                <input type="number" id="current-works" class="form-control" placeholder="1">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <h4>Статистика ДТП</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="current-accidents">Серьезных ДТП</label>
+                                <input type="number" id="current-accidents" class="form-control" placeholder="3">
+                            </div>
+                            <div class="form-group">
+                                <label for="current-injured">Ранено</label>
+                                <input type="number" id="current-injured" class="form-control" placeholder="6893">
+                            </div>
+                            <div class="form-group">
+                                <label for="current-killed">Погибло</label>
+                                <input type="number" id="current-killed" class="form-control" placeholder="181">
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" id="update-realtime-data" class="btn btn-primary btn-full">
+                        <i class="fas fa-sync"></i> Обновить данные в реальном времени
+                    </button>
+                </div>
             </div>
-            <div id="admin-main-view" class="active admin-panel-content">
-                <div class="add-object-form">
-                    <h3>Добавить объект на карту</h3>
-                    <form id="add-object-form">
+        </div>
+        <div id="accident-management-view" class="admin-panel-content">
+            <div class="data-section">
+                <h3>Управление статистикой ДТП</h3>
+                <form id="accident-stats-form">
+                    <div class="form-row">
                         <div class="form-group">
-                            <label for="object-type">Тип объекта</label>
-                            <select id="object-type" class="form-control" required>
-                                <option value="traffic-light">Светофор</option>
-                                <option value="camera">Камера</option>
-                                <option value="road-sign">Дорожный знак</option>
-                                <option value="incident">Происшествие</option>
+                            <label for="accident-total">Общее количество ДТП</label>
+                            <input type="number" id="accident-total" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="accident-injured">Количество раненых</label>
+                            <input type="number" id="accident-injured" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="accident-killed">Количество погибших</label>
+                            <input type="number" id="accident-killed" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="accident-year">Год</label>
+                            <input type="number" id="accident-year" class="form-control" value="2024" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-full">Сохранить статистику</button>
+                </form>
+            </div>
+
+            <div class="data-section">
+                <h3>Управление типами ДТП</h3>
+                <div id="accident-types-list">
+                </div>
+                <div class="add-type-form"
+                     style="margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">
+                    <h4>Добавить новый тип ДТП</h4>
+                    <form id="add-accident-type-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="new-type-name">Название типа</label>
+                                <input type="text" id="new-type-name" class="form-control"
+                                       placeholder="Например: Столкновение" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-type-color">Цвет для графика</label>
+                                <input type="color" id="new-type-color" class="form-control" value="#36A2EB" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Добавить тип ДТП
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="data-section">
+                <h3>Редактировать данные по месяцам</h3>
+                <form id="accident-monthly-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="accident-type-select">Тип ДТП</label>
+                            <select id="accident-type-select" class="form-control" required>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="object-description">Описание</label>
-                            <textarea id="object-description" class="form-control" rows="3" required></textarea>
+                            <label for="accident-month">Месяц</label>
+                            <select id="accident-month" class="form-control" required>
+                                <option value="1">Январь</option>
+                                <option value="2">Февраль</option>
+                                <option value="3">Март</option>
+                                <option value="4">Апрель</option>
+                                <option value="5">Май</option>
+                                <option value="6">Июнь</option>
+                                <option value="7">Июль</option>
+                                <option value="8">Август</option>
+                                <option value="9">Сентябрь</option>
+                                <option value="10">Октябрь</option>
+                                <option value="11">Ноябрь</option>
+                                <option value="12">Декабрь</option>
+                            </select>
                         </div>
                         <div class="form-group">
-                            <label for="object-coords">Координаты</label>
-                            <input type="text" id="object-coords" class="form-control" readonly required>
-                            <p class="coordinates">Нажмите на карту, чтобы выбрать местоположение.</p>
+                            <label for="accident-count">Количество</label>
+                            <input type="number" id="accident-count" class="form-control" required>
                         </div>
-                        <button type="submit" class="btn btn-primary btn-full">Добавить объект</button>
-                    </form>
-                </div>
-                <div id="admin-map" class="admin-map-container"></div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-full">Сохранить данные</button>
+                </form>
             </div>
-            <div id="data-tools-view" class="data-tools-container admin-panel-content">
-                <div class="data-section">
-                    <h3>Редактировать объекты</h3>
-                    <table class="data-table" id="data-table">
-                        <thead>
-                            <tr>
-                                <th>Тип</th>
-                                <th>Описание</th>
-                                <th>Координаты</th>
-                                <th>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            </tbody>
-                    </table>
-                </div>
-                <div class="data-section">
-                    <h3>Загрузка данных</h3>
+
+            <div class="data-section">
+                <h3>Массовое редактирование данных ДТП</h3>
+                <div class="bulk-edit-controls">
+                    <p>Загрузите CSV файл с данными ДТП для массового обновления:</p>
                     <div class="file-upload-section">
-                        <label for="csv-file">Загрузить CSV-файл (ДТП)</label>
-                        <input type="file" id="csv-file" accept=".csv" class="form-control">
-                        <button id="upload-csv-btn" class="btn btn-secondary" style="margin-top: 1rem;">
-                            <i class="fas fa-upload"></i> Загрузить
+                        <input type="file" id="bulk-dtp-file" accept=".csv" class="form-control">
+                        <button id="process-bulk-dtp" class="btn btn-secondary" style="margin-top: 1rem;">
+                            <i class="fas fa-upload"></i> Обработать файл
                         </button>
-                        <p style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.5rem;">Формат: type,injured,killed</p>
+                        <p style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.5rem;">
+                            Формат CSV: type,month,count,color<br>
+                            Пример: Столкновение,1,150,#36A2EB
+                        </p>
                     </div>
                 </div>
             </div>
-            <div id="analytics-view" class="analytics-chart-container admin-panel-content">
-                <h3>Аналитика</h3>
-                <div class="chart-container">
-                    <canvas id="admin-analytics-chart"></canvas>
+        </div>
+
+        <!-- Управление новостями -->
+        <div id="news-management-view" class="admin-panel-content">
+            <div class="data-section">
+                <h3>Управление категориями новостей</h3>
+                <div id="news-categories-list">
                 </div>
-                <button id="edit-dpt-data-btn" class="btn btn-primary" style="margin-top: 1rem;">
-                    <i class="fas fa-edit"></i> Редактировать распределение ДТП
-                </button>
+                <div class="add-type-form"
+                     style="margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">
+                    <h4>Добавить новую категорию</h4>
+                    <form id="add-news-category-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="new-category-name">Название категории</label>
+                                <input type="text" id="new-category-name" class="form-control"
+                                       placeholder="Например: Дорожные работы" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-category-image">URL изображения</label>
+                                <input type="url" id="new-category-image" class="form-control"
+                                       placeholder="https://example.com/image.jpg">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Добавить категорию
+                        </button>
+                    </form>
+                </div>
             </div>
-            <div id="appeals-admin-view" class="appeals-list admin-panel-content" style="display: none; margin-top: 0;">
+
+            <div class="data-section">
+                <h3>Управление статьями</h3>
+                <div id="news-articles-list">
+                </div>
+                <div class="add-type-form"
+                     style="margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">
+                    <h4>Добавить новую статью</h4>
+                    <form id="add-news-article-form">
+                        <div class="form-group">
+                            <label for="article-category">Категория</label>
+                            <select id="article-category" class="form-control" required>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="article-title">Заголовок статьи</label>
+                            <input type="text" id="article-title" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="article-author">Автор</label>
+                            <input type="text" id="article-author" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="article-summary">Краткое описание</label>
+                            <textarea id="article-summary" class="form-control" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="article-content">Содержание</label>
+                            <div class="rich-editor-container">
+                                <div class="rich-editor-toolbar">
+                                    <button type="button" class="editor-btn" data-command="bold" title="Жирный">
+                                        <i class="fas fa-bold"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" data-command="italic" title="Курсив">
+                                        <i class="fas fa-italic"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" data-command="underline"
+                                            title="Подчеркнутый">
+                                        <i class="fas fa-underline"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" data-command="strikeThrough"
+                                            title="Зачеркнутый">
+                                        <i class="fas fa-strikethrough"></i>
+                                    </button>
+                                    <div class="editor-separator"></div>
+                                    <button type="button" class="editor-btn" data-command="insertUnorderedList"
+                                            title="Маркированный список">
+                                        <i class="fas fa-list-ul"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" data-command="insertOrderedList"
+                                            title="Нумерованный список">
+                                        <i class="fas fa-list-ol"></i>
+                                    </button>
+                                    <div class="editor-separator"></div>
+                                    <button type="button" class="editor-btn" data-command="justifyLeft"
+                                            title="По левому краю">
+                                        <i class="fas fa-align-left"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" data-command="justifyCenter"
+                                            title="По центру">
+                                        <i class="fas fa-align-center"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" data-command="justifyRight"
+                                            title="По правому краю">
+                                        <i class="fas fa-align-right"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" data-command="justifyFull"
+                                            title="По ширине">
+                                        <i class="fas fa-align-justify"></i>
+                                    </button>
+                                    <div class="editor-separator"></div>
+                                    <button type="button" class="editor-btn" data-command="createLink"
+                                            title="Вставить ссылку">
+                                        <i class="fas fa-link"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" data-command="insertImage"
+                                            title="Вставить изображение">
+                                        <i class="fas fa-image"></i>
+                                    </button>
+                                    <div class="editor-separator"></div>
+                                    <button type="button" class="editor-btn" data-command="undo" title="Отменить">
+                                        <i class="fas fa-undo"></i>
+                                    </button>
+                                    <button type="button" class="editor-btn" data-command="redo" title="Повторить">
+                                        <i class="fas fa-redo"></i>
+                                    </button>
+                                </div>
+                                <div id="article-content" class="rich-editor-content" contenteditable="true"
+                                     data-placeholder="Введите содержание статьи..."></div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="article-cover-image">URL обложки</label>
+                            <input type="url" id="article-cover-image" class="form-control"
+                                   placeholder="https://example.com/cover.jpg">
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Добавить статью
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Управление обращениями -->
+        <div id="appeals-management-view" class="admin-panel-content">
+            <div class="data-section">
                 <h3>Список обращений</h3>
-                <div id="appeals-list-admin" class="appeals-list" style="margin-top: 0; padding: 0; box-shadow: none;">
+                <div class="appeals-filters">
+                    <button class="btn btn-secondary" id="filter-all-appeals">Все</button>
+                    <button class="btn btn-secondary" id="filter-pending-appeals">Нерассмотренные</button>
+                    <button class="btn btn-secondary" id="filter-reviewed-appeals">Рассмотренные</button>
                 </div>
-            </div>
-            <div id="users-view" class="admin-panel-content">
-                <div class="data-section">
-                    <h3>Управление пользователями</h3>
-                    <table class="data-table" id="users-table">
-                        <thead>
-                            <tr>
-                                <th>Имя пользователя</th>
-                                <th>Роль</th>
-                                <th>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        </tbody>
-                    </table>
-                    <div class="add-object-form" style="margin-top: 2rem;">
-                        <h3>Добавить редактора</h3>
-                        <form id="add-user-form">
-                            <div class="form-group">
-                                <label for="new-username">Имя пользователя</label>
-                                <input type="text" id="new-username" class="form-control" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="new-password">Пароль</label>
-                                <input type="password" id="new-password" class="form-control" required>
-                            </div>
-                            <button type="submit" class="btn btn-primary btn-full">Добавить</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-            <div id="evacuator-settings-view" class="admin-panel-content">
-                <div class="data-section">
-                    <h3>Настройки калькулятора эвакуации</h3>
-                    <form id="evacuator-settings-form">
-                        <div class="form-group">
-                            <label for="base-rate">Базовая ставка</label>
-                            <input type="number" id="base-rate" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="km-rate">Ставка за км</label>
-                            <input type="number" id="km-rate" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="car-multiplier">Множитель для легкового автомобиля</label>
-                            <input type="number" id="car-multiplier" class="form-control" step="0.1" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="suv-multiplier">Множитель для внедорожника</label>
-                            <input type="number" id="suv-multiplier" class="form-control" step="0.1" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="truck-multiplier">Множитель для грузового автомобиля</label>
-                            <input type="number" id="truck-multiplier" class="form-control" step="0.1" required>
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-full">Сохранить</button>
-                    </form>
-                </div>
-            </div>
-            <div id="traffic-settings-view" class="admin-panel-content">
-                <div class="data-section">
-                    <h3>Настройки цветов пробок</h3>
-                    <form id="traffic-settings-form">
-                        <div class="form-group">
-                            <label>Цвет для низкого трафика (0-3 балла)</label>
-                            <div class="traffic-color-picker">
-                                <input type="color" id="low-traffic-color" class="color-input">
-                                <span id="low-traffic-color-value">#00FF00</span>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Цвет для среднего трафика (4-6 баллов)</label>
-                            <div class="traffic-color-picker">
-                                <input type="color" id="medium-traffic-color" class="color-input">
-                                <span id="medium-traffic-color-value">#FFFF00</span>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Цвет для высокого трафика (7-9 баллов)</label>
-                            <div class="traffic-color-picker">
-                                <input type="color" id="high-traffic-color" class="color-input">
-                                <span id="high-traffic-color-value">#FF0000</span>
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-full">Сохранить</button>
-                    </form>
-                </div>
-            </div>
-            <div id="weather-settings-view" class="admin-panel-content">
-                <div class="data-section">
-                    <h3>Управление данными в реальном времени</h3>
-                    <div class="real-time-controls">
-                        <div class="control-group">
-                            <h4>Погодные данные</h4>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="current-temp">Текущая температура</label>
-                                    <input type="number" id="current-temp" class="form-control" placeholder="23">
-                                </div>
-                                <div class="form-group">
-                                    <label for="current-weather">Текущая погода</label>
-                                    <input type="text" id="current-weather" class="form-control" placeholder="Ясно">
-                                </div>
-                                <div class="form-group">
-                                    <label for="current-weather-icon">Иконка погоды</label>
-                                    <select id="current-weather-icon" class="form-control">
-                                        <option value="fa-sun">Солнце</option>
-                                        <option value="fa-cloud">Облачно</option>
-                                        <option value="fa-cloud-rain">Дождь</option>
-                                        <option value="fa-snowflake">Снег</option>
-                                        <option value="fa-cloud-sun">Переменная облачность</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="control-group">
-                            <h4>Дорожная ситуация</h4>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="current-speed">Скорость потока</label>
-                                    <input type="number" id="current-speed" class="form-control" placeholder="76">
-                                </div>
-                                <div class="form-group">
-                                    <label for="current-works">Дорожные работы</label>
-                                    <input type="number" id="current-works" class="form-control" placeholder="1">
-                                </div>
-                            </div>
-                        </div>
-                        <div class="control-group">
-                            <h4>Статистика ДТП</h4>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="current-accidents">Серьезных ДТП</label>
-                                    <input type="number" id="current-accidents" class="form-control" placeholder="3">
-                                </div>
-                                <div class="form-group">
-                                    <label for="current-injured">Ранено</label>
-                                    <input type="number" id="current-injured" class="form-control" placeholder="6893">
-                                </div>
-                                <div class="form-group">
-                                    <label for="current-killed">Погибло</label>
-                                    <input type="number" id="current-killed" class="form-control" placeholder="181">
-                                </div>
-                            </div>
-                        </div>
-                        <button type="button" id="update-realtime-data" class="btn btn-primary btn-full">
-                            <i class="fas fa-sync"></i> Обновить данные в реальном времени
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div id="accident-management-view" class="admin-panel-content">
-                <div class="data-section">
-                    <h3>Управление статистикой ДТП</h3>
-                    <form id="accident-stats-form">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="accident-total">Общее количество ДТП</label>
-                                <input type="number" id="accident-total" class="form-control" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="accident-injured">Количество раненых</label>
-                                <input type="number" id="accident-injured" class="form-control" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="accident-killed">Количество погибших</label>
-                                <input type="number" id="accident-killed" class="form-control" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="accident-year">Год</label>
-                                <input type="number" id="accident-year" class="form-control" value="2024" required>
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-full">Сохранить статистику</button>
-                    </form>
-                </div>
-                
-                <div class="data-section">
-                    <h3>Управление типами ДТП</h3>
-                    <div id="accident-types-list">
-                        <!-- Список типов ДТП будет загружен динамически -->
-                    </div>
-                    <div class="add-type-form" style="margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">
-                        <h4>Добавить новый тип ДТП</h4>
-                        <form id="add-accident-type-form">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="new-type-name">Название типа</label>
-                                    <input type="text" id="new-type-name" class="form-control" placeholder="Например: Столкновение" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="new-type-color">Цвет для графика</label>
-                                    <input type="color" id="new-type-color" class="form-control" value="#36A2EB" required>
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-plus"></i> Добавить тип ДТП
-                            </button>
-                        </form>
-                    </div>
-                </div>
-                
-                <div class="data-section">
-                    <h3>Редактировать данные по месяцам</h3>
-                    <form id="accident-monthly-form">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="accident-type-select">Тип ДТП</label>
-                                <select id="accident-type-select" class="form-control" required>
-                                    <!-- Опции будут загружены динамически -->
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="accident-month">Месяц</label>
-                                <select id="accident-month" class="form-control" required>
-                                    <option value="1">Январь</option>
-                                    <option value="2">Февраль</option>
-                                    <option value="3">Март</option>
-                                    <option value="4">Апрель</option>
-                                    <option value="5">Май</option>
-                                    <option value="6">Июнь</option>
-                                    <option value="7">Июль</option>
-                                    <option value="8">Август</option>
-                                    <option value="9">Сентябрь</option>
-                                    <option value="10">Октябрь</option>
-                                    <option value="11">Ноябрь</option>
-                                    <option value="12">Декабрь</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="accident-count">Количество</label>
-                                <input type="number" id="accident-count" class="form-control" required>
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-full">Сохранить данные</button>
-                    </form>
-                </div>
-                
-                <div class="data-section">
-                    <h3>Массовое редактирование данных ДТП</h3>
-                    <div class="bulk-edit-controls">
-                        <p>Загрузите CSV файл с данными ДТП для массового обновления:</p>
-                        <div class="file-upload-section">
-                            <input type="file" id="bulk-dtp-file" accept=".csv" class="form-control">
-                            <button id="process-bulk-dtp" class="btn btn-secondary" style="margin-top: 1rem;">
-                                <i class="fas fa-upload"></i> Обработать файл
-                            </button>
-                            <p style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.5rem;">
-                                Формат CSV: type,month,count,color<br>
-                                Пример: Столкновение,1,150,#36A2EB
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Управление новостями -->
-            <div id="news-management-view" class="admin-panel-content">
-                <div class="data-section">
-                    <h3>Управление категориями новостей</h3>
-                    <div id="news-categories-list">
-                        <!-- Список категорий будет загружен динамически -->
-                    </div>
-                    <div class="add-type-form" style="margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">
-                        <h4>Добавить новую категорию</h4>
-                        <form id="add-news-category-form">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="new-category-name">Название категории</label>
-                                    <input type="text" id="new-category-name" class="form-control" placeholder="Например: Дорожные работы" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="new-category-image">URL изображения</label>
-                                    <input type="url" id="new-category-image" class="form-control" placeholder="https://example.com/image.jpg">
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-plus"></i> Добавить категорию
-                            </button>
-                        </form>
-                    </div>
-                </div>
-                
-                <div class="data-section">
-                    <h3>Управление статьями</h3>
-                    <div id="news-articles-list">
-                        <!-- Список статей будет загружен динамически -->
-                    </div>
-                    <div class="add-type-form" style="margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">
-                        <h4>Добавить новую статью</h4>
-                        <form id="add-news-article-form">
-                            <div class="form-group">
-                                <label for="article-category">Категория</label>
-                                <select id="article-category" class="form-control" required>
-                                    <!-- Опции будут загружены динамически -->
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="article-title">Заголовок статьи</label>
-                                <input type="text" id="article-title" class="form-control" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="article-author">Автор</label>
-                                <input type="text" id="article-author" class="form-control">
-                            </div>
-                            <div class="form-group">
-                                <label for="article-summary">Краткое описание</label>
-                                <textarea id="article-summary" class="form-control" rows="3"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label for="article-content">Содержание</label>
-                                <div class="rich-editor-container">
-                                    <div class="rich-editor-toolbar">
-                                        <button type="button" class="editor-btn" data-command="bold" title="Жирный">
-                                            <i class="fas fa-bold"></i>
-                                        </button>
-                                        <button type="button" class="editor-btn" data-command="italic" title="Курсив">
-                                            <i class="fas fa-italic"></i>
-                                        </button>
-                                        <button type="button" class="editor-btn" data-command="underline" title="Подчеркнутый">
-                                            <i class="fas fa-underline"></i>
-                                        </button>
-                                        <button type="button" class="editor-btn" data-command="strikeThrough" title="Зачеркнутый">
-                                            <i class="fas fa-strikethrough"></i>
-                                        </button>
-                                        <div class="editor-separator"></div>
-                                        <button type="button" class="editor-btn" data-command="insertUnorderedList" title="Маркированный список">
-                                            <i class="fas fa-list-ul"></i>
-                                        </button>
-                                        <button type="button" class="editor-btn" data-command="insertOrderedList" title="Нумерованный список">
-                                            <i class="fas fa-list-ol"></i>
-                                        </button>
-                                        <div class="editor-separator"></div>
-                                        <button type="button" class="editor-btn" data-command="justifyLeft" title="По левому краю">
-                                            <i class="fas fa-align-left"></i>
-                                        </button>
-                                        <button type="button" class="editor-btn" data-command="justifyCenter" title="По центру">
-                                            <i class="fas fa-align-center"></i>
-                                        </button>
-                                        <button type="button" class="editor-btn" data-command="justifyRight" title="По правому краю">
-                                            <i class="fas fa-align-right"></i>
-                                        </button>
-                                        <button type="button" class="editor-btn" data-command="justifyFull" title="По ширине">
-                                            <i class="fas fa-align-justify"></i>
-                                        </button>
-                                        <div class="editor-separator"></div>
-                                        <button type="button" class="editor-btn" data-command="createLink" title="Вставить ссылку">
-                                            <i class="fas fa-link"></i>
-                                        </button>
-                                        <button type="button" class="editor-btn" data-command="insertImage" title="Вставить изображение">
-                                            <i class="fas fa-image"></i>
-                                        </button>
-                                        <div class="editor-separator"></div>
-                                        <button type="button" class="editor-btn" data-command="undo" title="Отменить">
-                                            <i class="fas fa-undo"></i>
-                                        </button>
-                                        <button type="button" class="editor-btn" data-command="redo" title="Повторить">
-                                            <i class="fas fa-redo"></i>
-                                        </button>
-                                    </div>
-                                    <div id="article-content" class="rich-editor-content" contenteditable="true" data-placeholder="Введите содержание статьи..."></div>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="article-cover-image">URL обложки</label>
-                                <input type="url" id="article-cover-image" class="form-control" placeholder="https://example.com/cover.jpg">
-                            </div>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-plus"></i> Добавить статью
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Управление обращениями -->
-            <div id="appeals-management-view" class="admin-panel-content">
-                <div class="data-section">
-                    <h3>Список обращений</h3>
-                    <div class="appeals-filters">
-                        <button class="btn btn-secondary" id="filter-all-appeals">Все</button>
-                        <button class="btn btn-secondary" id="filter-pending-appeals">Нерассмотренные</button>
-                        <button class="btn btn-secondary" id="filter-reviewed-appeals">Рассмотренные</button>
-                    </div>
-                    <div id="admin-appeals-list">
-                        <!-- Список обращений будет загружен динамически -->
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Управление чатом -->
-            <div id="chat-management-view" class="admin-panel-content">
-                <div class="data-section">
-                    <h3>Управление чатами</h3>
-                    <div id="admin-chat-threads">
-                        <!-- Список чатов будет загружен динамически -->
-                    </div>
+                <div id="admin-appeals-list">
                 </div>
             </div>
         </div>
-    </section>
 
-    <div id="login-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-user-circle"></i> Авторизация</h2>
-                <span class="close-btn">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div id="error-message" class="error-message"></div>
-                <form id="login-form">
-                    <div class="form-group">
-                        <label for="username">Имя пользователя</label>
-                        <div class="input-with-icon">
-                            <i class="fas fa-user"></i>
-                            <input type="text" id="username" class="form-control" required>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="password">Пароль</label>
-                        <div class="input-with-icon">
-                            <i class="fas fa-lock"></i>
-                            <input type="password" id="password" class="form-control" required>
-                        </div>
-                    </div>
-                    <div class="form-options">
-                        <label class="checkbox-container">
-                            <input type="checkbox" id="remember-me">
-                            <span class="checkmark"></span>
-                            Запомнить меня
-                        </label>
-                        <a href="#" class="forgot-password">Забыли пароль?</a>
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-full" id="login-submit-btn">
-                        <i class="fas fa-sign-in-alt"></i> Войти
-                    </button>
-                </form>
-                <div class="login-footer">
-                    <p class="security-info">
-                        <i class="fas fa-shield-alt"></i> Ваши данные защищены
-                    </p>
+        <!-- Управление чатом -->
+        <div id="chat-management-view" class="admin-panel-content">
+            <div class="data-section">
+                <h3>Управление чатами</h3>
+                <div id="admin-chat-threads">
                 </div>
             </div>
         </div>
     </div>
+</section>
 
-    <div id="edit-dpt-data-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-edit"></i> Редактировать распределение ДТП</h2>
-                <span class="close-btn">&times;</span>
-            </div>
-            <div class="modal-body">
-                <form id="edit-dpt-data-form">
-                    <table id="dpt-data-table">
-                        <thead>
-                            <tr>
-                                <th>Тип / Месяц</th>
-                                <th>Янв</th>
-                                <th>Фев</th>
-                                <th>Мар</th>
-                                <th>Апр</th>
-                                <th>Май</th>
-                                <th>Июн</th>
-                                <th>Июл</th>
-                                <th>Авг</th>
-                                <th>Сен</th>
-                                <th>Окт</th>
-                                <th>Ноя</th>
-                                <th>Дек</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Строки будут добавлены динамически -->
-                        </tbody>
-                    </table>
-                    <button type="submit" class="btn btn-primary btn-full" style="margin-top: 1rem;">Сохранить изменения</button>
-                </form>
+<div id="login-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><i class="fas fa-user-circle"></i> Авторизация</h2>
+            <span class="close-btn">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div id="error-message" class="error-message"></div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Имя пользователя</label>
+                    <div class="input-with-icon">
+                        <i class="fas fa-user"></i>
+                        <input type="text" id="username" class="form-control" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="password">Пароль</label>
+                    <div class="input-with-icon">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" id="password" class="form-control" required>
+                    </div>
+                </div>
+                <div class="form-options">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="remember-me">
+                        <span class="checkmark"></span>
+                        Запомнить меня
+                    </label>
+                    <a href="#" class="forgot-password">Забыли пароль?</a>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full" id="login-submit-btn">
+                    <i class="fas fa-sign-in-alt"></i> Войти
+                </button>
+            </form>
+            <div class="login-footer">
+                <p class="security-info">
+                    <i class="fas fa-shield-alt"></i> Ваши данные защищены
+                </p>
             </div>
         </div>
     </div>
-    
-    <div id="chartjs-tooltip" class="chartjs-tooltip-custom"></div>
+</div>
 
-    <!-- Подключение JS -->
-    <script src="{% static 'JS/Main.js' %}"></script>
-    
-    <!-- Данные теперь загружаются через API -->
+<div id="edit-dpt-data-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><i class="fas fa-edit"></i> Редактировать распределение ДТП</h2>
+            <span class="close-btn">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="edit-dpt-data-form">
+                <table id="dpt-data-table">
+                    <thead>
+                    <tr>
+                        <th>Тип / Месяц</th>
+                        <th>Янв</th>
+                        <th>Фев</th>
+                        <th>Мар</th>
+                        <th>Апр</th>
+                        <th>Май</th>
+                        <th>Июн</th>
+                        <th>Июл</th>
+                        <th>Авг</th>
+                        <th>Сен</th>
+                        <th>Окт</th>
+                        <th>Ноя</th>
+                        <th>Дек</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+                <button type="submit" class="btn btn-primary btn-full" style="margin-top: 1rem;">Сохранить изменения
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="chartjs-tooltip" class="chartjs-tooltip-custom"></div>
+
+<script src="{% static 'JS/Main.js' %}"></script>
+
+{{ accident_data|json_script:"accident-data-json" }}
+<script>
+    const ACCIDENT_DATA_RAW = JSON.parse(document.getElementById('accident-data-json').textContent);
+    const ACCIDENT_DATA = Object.entries(ACCIDENT_DATA_RAW).map(([type, item]) => ({
+        type,
+        color: item.color,
+        monthly_data: (item.data || []).map(c => ({ count: c || 0, injured: 0, killed: 0 }))
+    }));
+
+    const MONTHS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+
+    const ACCIDENT_ICON_MAP = {
+        'Столкновение': 'fa-car-crash',
+        'Наезд на пешехода': 'fa-person-walking',
+        'Наезд на велосипедиста': 'fa-person-biking',
+        'Наезд на препятствие': 'fa-road-barrier',
+        'Наезд на стоящее ТС': 'fa-truck-front'
+    };
+
+    function showRichTooltipOnPointClick(event) {
+        const chart = window.myAccidentChart;
+        // Используем getElementsAtEventForMode для определения нажатой точки
+        const points = chart.getElementsAtEventForMode(event, 'point', { intersect: true }, true);
+
+        let tooltipEl = document.getElementById('chartjs-tooltip');
+
+        // если клик не попал на точку, скрываем тултип
+        if (points.length === 0) {
+            tooltipEl.style.opacity = 0;
+            return;
+        }
+
+        // получаем информацию о первой (и единственной) нажатой точке
+        const firstPoint = points[0];
+        const datasetIndex = firstPoint.datasetIndex;
+        const dataIndex = firstPoint.index;
+
+        const dataset = chart.data.datasets[datasetIndex];
+        const richDataPoint = dataset.richData[dataIndex];
+
+        const month = chart.data.labels[dataIndex];
+        const type = dataset.label;
+        const iconClass = ACCIDENT_ICON_MAP[type] || 'fa-info-circle';
+
+        const innerHtml = `
+            <h4><i class="fas ${iconClass}" style="color: ${dataset.borderColor}; margin-right: 5px;"></i> ${month} 2024</h4>
+            <p style="margin: 0 0 10px; font-weight: 600; color: ${dataset.borderColor};">${type}</p>
+            <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.2); padding-top: 10px;">
+                <div style="font-size: 1.1rem; font-weight: 500; line-height: 1; color: #aaaaaa;">
+                    Кол-во
+                    <div class="result-highlight">${richDataPoint.count}</div>
+                </div>
+                <div style="text-align: right; font-size: 0.9rem; line-height: 1.6;">
+                    <span style="color: ${dataset.borderColor}; font-weight: 700;">Пострадало: ${richDataPoint.injured + richDataPoint.killed}</span><br>
+                    Погибло: <strong>${richDataPoint.killed}</strong><br>
+                    Ранено: <strong>${richDataPoint.injured}</strong>
+                </div>
+            </div>
+        `;
+
+        tooltipEl.innerHTML = innerHtml;
+
+        // позиционирование тултипа
+        const meta = chart.getDatasetMeta(datasetIndex);
+        const pointElement = meta.data[dataIndex];
+        // получаем точные координаты канваса относительно viewport
+        const chartRect = chart.canvas.getBoundingClientRect();
+
+        tooltipEl.style.opacity = 1;
+
+        // размеры тултипа после обновления контента
+        const tooltipWidth = tooltipEl.offsetWidth || 250;
+        const tooltipHeight = tooltipEl.offsetHeight || 150;
+
+        // координаты точки относительно всей страницы
+        // pointElement.x/y - координаты относительно области графика
+        let pageX = chartRect.left + window.scrollX + pointElement.x;
+        let pageY = chartRect.top + window.scrollY + pointElement.y;
+
+        let left = pageX + 10; // Начальное позиционирование: немного справа от точки
+        let top = pageY + 10;  // Начальное позиционирование: немного снизу от точки
+
+        // --- горизонтальная корректировка ---
+        // если тултип выходит за правый край окна
+        if (left + tooltipWidth > window.scrollX + window.innerWidth) {
+            // размещаем тултип слева от точки
+            left = pageX - tooltipWidth - 10;
+        }
+
+        // если тултип выходит за левый край (или если он был сдвинут влево и этого мало)
+        if (left < window.scrollX) {
+             left = window.scrollX + 5; // смещение от левого края окна (крайний случай)
+        }
+
+        // --- вертикальная корректировка ---
+        // если тултип выходит за нижний край окна
+        if (top + tooltipHeight > window.scrollY + window.innerHeight) {
+            // размещаем тултип выше точки
+            top = pageY - tooltipHeight - 10;
+        }
+        // если тултип выходит за верхний край окна
+        if (top < window.scrollY) {
+            top = window.scrollY + 5; // смещение от верхнего края окна (крайний случай)
+        }
+
+        // устанавливаем окончательную абсолютную позицию на странице
+        tooltipEl.style.left = left + 'px';
+        tooltipEl.style.top = top + 'px';
+    }
+
+
+    // ОСНОВНАЯ ФУНКЦИЯ ИНИЦИАЛИЗАЦИИ ГРАФИКА
+    function initAccidentLineChart() {
+        const ctx = document.getElementById('accident-line-chart');
+
+        if (!ctx) return;
+
+        if (window.myAccidentChart instanceof Chart) {
+            window.myAccidentChart.destroy();
+        }
+
+        const datasets = ACCIDENT_DATA.map(data => ({
+            label: data.type,
+            // Используем только count для построения линии
+            data: data.monthly_data.map(m => m.count),
+            borderColor: data.color,
+            borderWidth: 4,
+            tension: 0.4,
+            pointRadius: 5,
+            pointBackgroundColor: data.color,
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointHoverRadius: 7,
+            fill: true,
+            // СОХРАНЯЕМ ДЕТАЛЬНЫЕ ДАННЫЕ В КАСТОМНОМ ПОЛЕ ДАТАСЕТА
+            richData: data.monthly_data,
+
+            // Настройка градиентного фона
+            backgroundColor: (context) => {
+                const chart = context.chart;
+                const {ctx, chartArea} = chart;
+                if (!chartArea) {
+                    return null;
+                }
+                const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                gradient.addColorStop(0, data.color + 'CC'); // 80% прозрачности сверху
+                gradient.addColorStop(1, data.color + '00'); // Полная прозрачность снизу
+                return gradient;
+            },
+        }));
+
+
+        window.myAccidentChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: MONTHS,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    title: {
+                        display: false
+                    },
+                    tooltip: {
+                        enabled: false, // Отключаем стандартный тултип
+                    }
+                },
+                onHover: (event, elements) => {
+                    // Меняем курсор на "указатель" при наведении на точку
+                    event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            display: false,
+                        },
+                        ticks: {
+                            color: '#ffffff',
+                            font: {
+                                size: 11,
+                                weight: '500'
+                            }
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: '#444444',
+                            borderDash: [5, 5],
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: '#ffffff',
+                            font: {
+                                size: 11
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // ДОБАВЛЕНИЕ ОБРАБОТЧИКА СОБЫТИЯ КЛИКА
+        ctx.onclick = showRichTooltipOnPointClick;
+
+        // Добавление обработчика клика на весь документ, чтобы скрыть тултип при клике вне него
+        document.addEventListener('click', (e) => {
+            const chartCanvas = document.getElementById('accident-line-chart');
+            const tooltipEl = document.getElementById('chartjs-tooltip');
+
+            // Если клик не на холсте и не на тултипе, скрыть тултип
+            if (chartCanvas && tooltipEl && !chartCanvas.contains(e.target) && !tooltipEl.contains(e.target)) {
+                tooltipEl.style.opacity = 0;
+            }
+        });
+    }
+
+    // Инициализация при загрузке
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(initAccidentLineChart, 100);
+    });
+
+</script>
 </body>
 </html>

@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Аналитика трафика</title>
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'CSS/Home.css' %}">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+</head>
+<body>
+  <div class="container" style="margin-top: 1rem;">
+    <h1>Аналитика трафика</h1>
+    <p><a href="/">На главную</a></p>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Начало окна</label>
+        <input type="datetime-local" id="start" class="form-control">
+      </div>
+      <div class="form-group">
+        <label>Конец окна</label>
+        <input type="datetime-local" id="end" class="form-control">
+      </div>
+      <div class="form-group">
+        <label>Топ-N</label>
+        <input type="number" id="top" class="form-control" value="10" min="1">
+      </div>
+      <div class="form-group">
+        <label>Мин. длина маршрута</label>
+        <input type="number" id="min_len" class="form-control" value="3" min="2">
+      </div>
+      <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="snap-roads" class="form-control" style="width:auto;" checked>
+        <label for="snap-roads" style="margin:0;">Рисовать по дорогам (OSRM)</label>
+      </div>
+      <button id="load-clusters" class="btn btn-primary">Показать популярные маршруты</button>
+    </div>
+
+    <div id="analytics-map" class="map-container" style="height: 500px; margin-top: 1rem;"></div>
+    <div id="clusters-list" class="data-section" style="margin-top: 1rem;"></div>
+
+    <hr>
+    <h2>Совместное движение</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Целевое ТС</label>
+        <input type="text" id="target-vehicle" class="form-control" placeholder="vehicle_id">
+      </div>
+      <div class="form-group">
+        <label>K узлов</label>
+        <input type="number" id="k" class="form-control" value="3" min="2">
+      </div>
+      <div class="form-group">
+        <label>Допуск по времени (сек)</label>
+        <input type="number" id="dt" class="form-control" value="300" min="1">
+      </div>
+      <div class="form-group">
+        <label>Макс. опережение (узлы)</label>
+        <input type="number" id="max_lead" class="form-control" value="2" min="0">
+      </div>
+      <button id="find-comove" class="btn btn-secondary">Найти совместно движущиеся ТС</button>
+    </div>
+    <div id="comove-results" class="data-section" style="margin-top: 1rem;"></div>
+    
+    <hr>
+    <h2>Карта путей совместного движения</h2>
+    <div id="comove-map" class="map-container" style="height: 400px; margin-top: 1rem;"></div>
+  </div>
+
+  <script>
+    let map, objects;
+    let mapReady = false;
+    let comoveMap, comoveObjects;
+    let comoveMapReady = false;
+    let detectorById = new Map();
+    // Cache for routed segments between detector pairs (keyed by coordinates)
+    const routeCache = new Map();
+    // Limit concurrent OSRM requests
+    const MAX_CONCURRENT_ROUTES = 4;
+    let activeRouteRequests = 0;
+    const routeQueue = [];
+
+    function enqueueRoute(taskFn) {
+      return new Promise((resolve, reject) => {
+        routeQueue.push({ taskFn, resolve, reject });
+        pumpRouteQueue();
+      });
+    }
+
+    function pumpRouteQueue() {
+      while (activeRouteRequests < MAX_CONCURRENT_ROUTES && routeQueue.length > 0) {
+        const { taskFn, resolve, reject } = routeQueue.shift();
+        activeRouteRequests += 1;
+        taskFn()
+          .then(resolve)
+          .catch(reject)
+          .finally(() => {
+            activeRouteRequests -= 1;
+            pumpRouteQueue();
+          });
+      }
+    }
+
+    function coordsKey(a, b) {
+      // a and b are [lat, lon]
+      const k1 = `${a[0].toFixed(6)},${a[1].toFixed(6)}|${b[0].toFixed(6)},${b[1].toFixed(6)}`;
+      return k1;
+    }
+
+    async function osrmRouteLatLon(a, b) {
+      // a,b as [lat, lon]; OSRM expects lon,lat
+      const key = coordsKey(a, b);
+      if (routeCache.has(key)) return routeCache.get(key);
+      const url = `https://router.project-osrm.org/route/v1/driving/${a[1]},${a[0]};${b[1]},${b[0]}?overview=full&geometries=geojson`;
+      const task = async () => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('OSRM error ' + res.status);
+        const data = await res.json();
+        const coords = (((data || {}).routes || [])[0] || {}).geometry || null;
+        const path = coords && Array.isArray(coords.coordinates) ? coords.coordinates.map(([lon, lat]) => [lat, lon]) : null;
+        if (!path || path.length < 2) throw new Error('No route');
+        routeCache.set(key, path);
+        return path;
+      };
+      try {
+        const result = await enqueueRoute(task);
+        return result;
+      } catch (e) {
+        // Fallback to straight segment
+        const fallback = [a, b];
+        routeCache.set(key, fallback);
+        return fallback;
+      }
+    }
+
+    async function buildRoutedPolylineForSegment(seg, color) {
+      // Legacy client-side OSRM fallback
+      if (!Array.isArray(seg) || seg.length < 2) return null;
+      const merged = [];
+      for (let i = 0; i < seg.length - 1; i++) {
+        const a = seg[i];
+        const b = seg[i + 1];
+        // eslint-disable-next-line no-await-in-loop
+        const route = await osrmRouteLatLon(a, b);
+        if (i === 0) {
+          merged.push(...route);
+        } else {
+          merged.push(...route.slice(1));
+        }
+      }
+      return L.polyline(merged, { color, weight: 5, opacity: 0.9 });
+    }
+    function initMap() {
+      map = L.map('analytics-map', { center: [54.7818, 32.0401], zoom: 12, attributionControl: false });
+      const myAttrControl = L.control.attribution().addTo(map);
+      myAttrControl.setPrefix('<a href="https://itgol.ru/">Фисташечки</a>');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+      objects = L.featureGroup().addTo(map);
+      mapReady = true;
+      const btn1 = document.getElementById('load-clusters');
+      const btn2 = document.getElementById('find-comove');
+      if (btn1) btn1.disabled = false;
+      if (btn2) btn2.disabled = false;
+    }
+
+    function initComoveMap() {
+      comoveMap = L.map('comove-map', { center: [54.7818, 32.0401], zoom: 12, attributionControl: false });
+      const myAttrControl = L.control.attribution().addTo(comoveMap);
+      myAttrControl.setPrefix('<a href="https://itgol.ru/">Фисташечки</a>');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(comoveMap);
+      comoveObjects = L.featureGroup().addTo(comoveMap);
+      comoveMapReady = true;
+    }
+
+    initMap();
+    initComoveMap();
+
+    function getCookie(name) {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return null;
+    }
+
+    async function ensureDetectors() {
+      if (detectorById.size > 0) return detectorById;
+      const res = await fetch('/api/detectors/');
+      const data = await res.json();
+      if (data && data.detectors) {
+        data.detectors.forEach(d => {
+          if (Array.isArray(d.coordinates) && d.coordinates.length === 2) {
+            detectorById.set(d.id, d);
+          }
+        });
+      }
+      return detectorById;
+    }
+
+    function fmt(dt) {
+      return dt ? new Date(dt).toISOString() : null;
+    }
+
+    async function snapSegmentsServer(segments) {
+      // segments: array of segment arrays [[ [lat,lon], ... ], ...]
+      try {
+        const res = await fetch('/api/traffic/route-snap/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken') || ''
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify({ segments })
+        });
+        if (!res.ok) throw new Error('route-snap failed');
+        const data = await res.json();
+        if (data && data.ok && Array.isArray(data.polylines)) {
+          return data.polylines; // array of arrays of [lat,lon]
+        }
+      } catch (e) {
+        // fall through to client-side
+      }
+      return null;
+    }
+
+    async function displayVehiclePathOnComoveMap(vehicleId, startTime, endTime) {
+      console.log('displayVehiclePathOnComoveMap вызвана с параметрами:', vehicleId, startTime, endTime);
+      if (!comoveMapReady) {
+        console.log('comoveMapReady = false, выходим');
+        return;
+      }
+      
+      // Очищаем карту
+      if (comoveObjects && typeof comoveObjects.clearLayers === 'function') {
+        comoveObjects.clearLayers();
+      } else if (comoveMap) {
+        comoveObjects = L.featureGroup().addTo(comoveMap);
+      }
+
+      try {
+        // Запрашиваем данные о пути ТС
+        const qs = new URLSearchParams({ 
+          vehicle_id: vehicleId, 
+          start: startTime, 
+          end: endTime 
+        });
+        console.log('Запрашиваем путь ТС:', `/api/traffic/vehicle-path/?${qs.toString()}`);
+        const res = await fetch(`/api/traffic/vehicle-path/?${qs.toString()}`);
+        const data = await res.json();
+        console.log('Ответ от API:', data);
+        
+        if (data && data.ok && data.path && data.path.length > 0) {
+          await ensureDetectors();
+          const bounds = L.latLngBounds();
+          const path = data.path;
+          const segments = [];
+          let current = [];
+          const missing = [];
+          
+          // Обрабатываем путь аналогично кластерам
+          path.forEach(detId => {
+            const det = detectorById.get(detId);
+            if (det && Array.isArray(det.coordinates) && det.coordinates.length === 2) {
+              current.push([det.coordinates[0], det.coordinates[1]]);
+            } else {
+              missing.push(detId);
+              if (current.length > 0) {
+                segments.push(current);
+                current = [];
+              }
+            }
+          });
+          if (current.length > 0) segments.push(current);
+
+          if (segments.length > 0) {
+            const color = '#ff6600'; // Оранжевый цвет для пути ТС
+            const snapToRoads = true;
+            
+            if (snapToRoads) {
+              // Пробуем серверное построение маршрутов
+              const polylines = await snapSegmentsServer(segments);
+              if (polylines && polylines.length === segments.length) {
+                for (let i = 0; i < polylines.length; i++) {
+                  const coords = polylines[i];
+                  if (Array.isArray(coords) && coords.length >= 2) {
+                    const poly = L.polyline(coords, { color, weight: 6, opacity: 0.9 }).addTo(comoveObjects);
+                    coords.forEach(c => bounds.extend(c));
+                  } else {
+                    const seg = segments[i];
+                    if (Array.isArray(seg) && seg.length >= 2) {
+                      const poly = await buildRoutedPolylineForSegment(seg, color);
+                      if (poly) {
+                        poly.addTo(comoveObjects);
+                        (poly.getLatLngs() || []).forEach(c => bounds.extend(c));
+                      }
+                    }
+                  }
+                }
+              } else {
+                // Fallback к клиентскому OSRM
+                for (const seg of segments) {
+                  if (seg.length >= 2) {
+                    const poly = await buildRoutedPolylineForSegment(seg, color);
+                    if (poly) {
+                      poly.addTo(comoveObjects);
+                      (poly.getLatLngs() || []).forEach(c => bounds.extend(c));
+                    }
+                  }
+                }
+              }
+            } else {
+              // Прямые сегменты
+              segments.forEach(seg => {
+                if (seg.length >= 2) {
+                  const poly = L.polyline(seg, { color, weight: 6, opacity: 0.8 }).addTo(comoveObjects);
+                  seg.forEach(c => bounds.extend(c));
+                }
+              });
+            }
+
+            // Добавляем маркеры начала и конца
+            const firstSeg = segments[0];
+            const lastSeg = segments[segments.length - 1];
+            const startPoint = firstSeg[0];
+            const endPoint = lastSeg[lastSeg.length - 1];
+            
+            if (startPoint) {
+              L.marker(startPoint, { draggable: false })
+                .addTo(comoveObjects)
+                .bindPopup(`Старт ТС ${vehicleId}`);
+            }
+            if (endPoint) {
+              L.marker(endPoint, { draggable: false })
+                .addTo(comoveObjects)
+                .bindPopup(`Финиш ТС ${vehicleId}`);
+            }
+
+            // Подгоняем карту под маршрут
+            if (bounds.isValid()) {
+              comoveMap.fitBounds(bounds);
+            }
+          }
+        } else {
+          console.log('Нет данных о пути или ошибка в ответе, пробуем без окна:', data);
+          // Retry без start/end, чтобы подсветить путь по всем данным
+          try {
+            const qs2 = new URLSearchParams({ vehicle_id: vehicleId });
+            const res2 = await fetch(`/api/traffic/vehicle-path/?${qs2.toString()}`);
+            const data2 = await res2.json();
+            console.log('Ответ от API (без окна):', data2);
+            if (data2 && data2.ok && data2.path && data2.path.length > 0) {
+              // Рекурсивно вызываем себя с новым ответом, но без повторного запроса
+              await (async () => {
+                await ensureDetectors();
+                const bounds = L.latLngBounds();
+                const path = data2.path;
+                const segments = [];
+                let current = [];
+                path.forEach(detId => {
+                  const det = detectorById.get(detId);
+                  if (det && Array.isArray(det.coordinates) && det.coordinates.length === 2) {
+                    current.push([det.coordinates[0], det.coordinates[1]]);
+                  } else {
+                    if (current.length > 0) { segments.push(current); current = []; }
+                  }
+                });
+                if (current.length > 0) segments.push(current);
+                const color = '#ff6600';
+                for (const seg of segments) {
+                  if (seg.length >= 2) {
+                    const poly = await buildRoutedPolylineForSegment(seg, color);
+                    if (poly) {
+                      poly.addTo(comoveObjects);
+                      (poly.getLatLngs() || []).forEach(c => bounds.extend(c));
+                    }
+                  }
+                }
+                if (bounds.isValid()) comoveMap.fitBounds(bounds);
+              })();
+            }
+          } catch (e2) {
+            console.log('Повтор без окна не удался:', e2);
+          }
+        }
+      } catch (e) {
+        console.error('Ошибка загрузки пути ТС:', e);
+      }
+    }
+
+    document.getElementById('load-clusters').addEventListener('click', async () => {
+      if (!mapReady) return;
+      const start = document.getElementById('start').value;
+      const end = document.getElementById('end').value;
+      if (!start || !end) {
+        alert('Укажите начало и конец временного окна.');
+        return;
+      }
+      const top = parseInt(document.getElementById('top').value || '10', 10);
+      const min_len = parseInt(document.getElementById('min_len').value || '3', 10);
+      const startIso = new Date(start);
+      const endIso = new Date(end);
+      if (isNaN(startIso.getTime()) || isNaN(endIso.getTime())) {
+        alert('Неверный формат даты/времени.');
+        return;
+      }
+      const qs = new URLSearchParams({ start: startIso.toISOString(), end: endIso.toISOString(), top: String(top), min_len: String(min_len) });
+      let data;
+      try {
+        const res = await fetch(`/api/traffic/cluster-routes/?${qs.toString()}`);
+        data = await res.json();
+      } catch (e) {
+        alert('Ошибка загрузки данных маршрутов.');
+        return;
+      }
+      if (objects && typeof objects.clearLayers === 'function') {
+        objects.clearLayers();
+      } else if (map) {
+        objects = L.featureGroup().addTo(map);
+      }
+      const list = document.getElementById('clusters-list');
+      list.innerHTML = '';
+      if (data && data.ok) {
+        await ensureDetectors();
+        const bounds = L.latLngBounds();
+        const lines = [];
+        (data.clusters || []).forEach((cl, idx) => {
+          const color = ['#ff0000', '#00aa00', '#0000ff', '#ff8800', '#aa00aa'][idx % 5];
+          const item = document.createElement('div');
+          item.style.cursor = 'pointer';
+          item.style.marginBottom = '6px';
+          item.innerHTML = `<strong>#${idx+1}</strong>: ТС=${cl.vehicle_count}, I=${cl.intensity_per_hour.toFixed(2)}/ч, V=${cl.avg_speed_kmh ? cl.avg_speed_kmh.toFixed(1) : '-'} км/ч, T=${cl.avg_travel_seconds ? Math.round(cl.avg_travel_seconds) : '-'} с`;
+          list.appendChild(item);
+
+          const segments = [];
+          let current = [];
+          const missing = [];
+          (cl.path || []).forEach(detId => {
+            const det = detectorById.get(detId);
+            if (det && Array.isArray(det.coordinates) && det.coordinates.length === 2) {
+              current.push([det.coordinates[0], det.coordinates[1]]);
+            } else {
+              missing.push(detId);
+              if (current.length > 0) {
+                segments.push(current);
+                current = [];
+              }
+            }
+          });
+          if (current.length > 0) segments.push(current);
+
+          if (segments.length > 0) {
+            // Draw every available segment; optionally snap to roads via OSRM
+            let longest = segments[0];
+            const snapToRoads = true;
+            const drawPromises = [];
+            if (snapToRoads) {
+              // Try server-side snapping in one batch per cluster for performance
+              const p = snapSegmentsServer(segments).then(async (polylines) => {
+                if (polylines && polylines.length === segments.length) {
+                  for (let i = 0; i < polylines.length; i++) {
+                    const coords = polylines[i];
+                    if (Array.isArray(coords) && coords.length >= 2) {
+                      const poly = L.polyline(coords, { color, weight: 5, opacity: 0.9 }).addTo(objects);
+                      lines.push(poly);
+                      coords.forEach(c => bounds.extend(c));
+                    } else {
+                      const seg = segments[i];
+                      if (Array.isArray(seg) && seg.length >= 2) {
+                        const poly = await buildRoutedPolylineForSegment(seg, color);
+                        if (poly) {
+                          poly.addTo(objects);
+                          lines.push(poly);
+                          (poly.getLatLngs() || []).forEach(c => bounds.extend(c));
+                        }
+                      }
+                    }
+                  }
+                } else {
+                  // Backend unavailable; fallback to client-side OSRM per segment
+                  for (const seg of segments) {
+                    if (seg.length >= 2) {
+                      // eslint-disable-next-line no-await-in-loop
+                      const poly = await buildRoutedPolylineForSegment(seg, color);
+                      if (poly) {
+                        poly.addTo(objects);
+                        lines.push(poly);
+                        (poly.getLatLngs() || []).forEach(c => bounds.extend(c));
+                      }
+                    } else if (seg.length === 1) {
+                      L.marker(seg[0], { draggable: false }).addTo(objects);
+                    }
+                  }
+                }
+              }).catch(async () => {
+                // Fallback: client OSRM for all segments
+                for (const seg of segments) {
+                  if (seg.length >= 2) {
+                    // eslint-disable-next-line no-await-in-loop
+                    const poly = await buildRoutedPolylineForSegment(seg, color);
+                    if (poly) {
+                      poly.addTo(objects);
+                      lines.push(poly);
+                      (poly.getLatLngs() || []).forEach(c => bounds.extend(c));
+                    }
+                  } else if (seg.length === 1) {
+                    L.marker(seg[0], { draggable: false }).addTo(objects);
+                  }
+                }
+              });
+              drawPromises.push(p);
+            } else {
+              segments.forEach(seg => {
+                if (seg.length >= 2) {
+                  const poly = L.polyline(seg, { color, weight: 5, opacity: 0.8 }).addTo(objects);
+                  lines.push(poly);
+                  seg.forEach(c => bounds.extend(c));
+                } else if (seg.length === 1) {
+                  L.marker(seg[0], { draggable: false }).addTo(objects);
+                }
+              });
+            }
+            segments.forEach(seg => { if (seg.length > longest.length) longest = seg; });
+            // endpoints for the overall visible path
+            const firstSeg = segments[0];
+            const lastSeg = segments[segments.length - 1];
+            const startPoint = firstSeg[0];
+            const endPoint = lastSeg[lastSeg.length - 1];
+            if (startPoint) L.marker(startPoint, { draggable: false }).addTo(objects).bindPopup(`Старт #${idx+1}`);
+            if (endPoint) L.marker(endPoint, { draggable: false }).addTo(objects).bindPopup(`Финиш #${idx+1}`);
+            item.addEventListener('click', () => {
+              map.fitBounds(L.latLngBounds(longest));
+              lines.forEach(poly => poly.setStyle({ weight: 5, opacity: 0.8 }));
+              const highlight = L.polyline(longest, { color, weight: 7, opacity: 1.0 }).addTo(objects);
+              setTimeout(() => {
+                try { objects.removeLayer(highlight); } catch (e) {}
+              }, 1200);
+            });
+            // Ensure bounds fit after async routes complete
+            if (drawPromises.length > 0) {
+              Promise.allSettled(drawPromises).then(() => {
+                if (bounds.isValid()) map.fitBounds(bounds);
+              });
+            }
+            if (missing.length > 0) {
+              const warn = document.createElement('div');
+              warn.style.color = '#a00';
+              warn.textContent = `Отсутствуют координаты узлов: ${missing.join(', ')}.`;
+              item.appendChild(warn);
+            }
+          } else {
+            const warn = document.createElement('div');
+            warn.style.color = '#a00';
+            warn.textContent = 'Нет координат для отображения маршрута (загрузите детекторы).';
+            item.appendChild(warn);
+          }
+        });
+        if (bounds.isValid()) {
+          map.fitBounds(bounds);
+        } else if (!data.clusters || data.clusters.length === 0) {
+          const empty = document.createElement('div');
+          empty.textContent = 'Маршруты в заданном окне не найдены.';
+          list.appendChild(empty);
+        }
+      } else {
+        const err = document.createElement('div');
+        err.style.color = '#a00';
+        err.textContent = data && data.error ? data.error : 'Ошибка обработки запроса.';
+        list.appendChild(err);
+      }
+    });
+
+    document.getElementById('find-comove').addEventListener('click', async () => {
+      if (!mapReady) return;
+      const vehicle_id = document.getElementById('target-vehicle').value.trim();
+      const k = document.getElementById('k').value || 3;
+      const dt = document.getElementById('dt').value || 300;
+      const max_lead = document.getElementById('max_lead').value || 2;
+      let data;
+      try {
+        const res = await fetch(`/api/traffic/comovement/?${new URLSearchParams({ vehicle_id, k, dt, max_lead })}`);
+        data = await res.json();
+      } catch (e) {
+        alert('Ошибка загрузки данных совместного движения.');
+        return;
+      }
+      const box = document.getElementById('comove-results');
+      box.innerHTML = '';
+      if (data.ok) {
+        (data.matches || []).forEach((m) => {
+          const div = document.createElement('div');
+          div.style.cursor = 'pointer';
+          div.style.padding = '8px';
+          div.style.border = '1px solid #ddd';
+          div.style.borderRadius = '4px';
+          div.style.marginBottom = '4px';
+          div.style.backgroundColor = '#f9f9f9';
+          div.innerHTML = `<strong>${m.vehicle_id}</strong>: совпало узлов=${m.matched_nodes}, период=${m.start_time} — ${m.end_time}`;
+          
+          // Добавляем обработчик клика для отображения пути на карте
+          div.addEventListener('click', () => {
+            console.log('Клик по ТС:', m.vehicle_id, m.start_time, m.end_time);
+            displayVehiclePathOnComoveMap(m.vehicle_id, m.start_time, m.end_time);
+          });
+          
+          // Добавляем hover эффект
+          div.addEventListener('mouseenter', () => {
+            div.style.backgroundColor = '#e9e9e9';
+          });
+          div.addEventListener('mouseleave', () => {
+            div.style.backgroundColor = '#f9f9f9';
+          });
+          
+          box.appendChild(div);
+        });
+        if (!data.matches || data.matches.length === 0) {
+          const empty = document.createElement('div');
+          empty.textContent = 'Совместно движущиеся ТС не найдены.';
+          box.appendChild(empty);
+        }
+      }
+    });
+  </script>
+</body>
+</html>
+
+

@@ -1,16 +1,22 @@
 function initMap() {
-  DG.then(function() {
-    var map = DG.map('traffic-map', {
-      center: [54.7818, 32.0401],
-      zoom: 11,
-      scrollWheelZoom: false
-    });
+  var map = L.map('traffic-map', {
+    center: [54.7818, 32.0401],
+    zoom: 11,
+    scrollWheelZoom: false,
+    attributionControl: false
+  });
+  var myAttrControl = L.control.attribution().addTo(map);
+  myAttrControl.setPrefix('<a href="https://itgol.ru/">Фисташечки</a>');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: 'Data by &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, under <a href="https://opendatacommons.org/licenses/odbl/">ODbL.</a>'
+  }).addTo(map);
 
-    var trafficLayer = DG.featureGroup();
-    var incidentsLayer = DG.featureGroup();
-    var patrolLayer = DG.featureGroup();
-    var camerasLayer = DG.featureGroup();
-  var speedLayer = DG.featureGroup();
+  var trafficLayer = L.featureGroup();
+  var incidentsLayer = L.featureGroup();
+  var patrolLayer = L.featureGroup();
+  var camerasLayer = L.featureGroup();
+  var speedLayer = L.featureGroup();
 
     // Load traffic jams from API
     fetch('/api/traffic/')
@@ -27,7 +33,7 @@ function initMap() {
             if (traffic.severity === 'high') color = '#FF0000';
             else if (traffic.severity === 'low') color = '#FFA500';
             
-            var polyline = DG.polyline([[lat, lon], [lat + 0.001, lon + 0.001]], {
+            var polyline = L.polyline([[lat, lon], [lat + 0.001, lon + 0.001]], {
               color: color,
               weight: 4,
               opacity: 0.8
@@ -50,7 +56,7 @@ function initMap() {
             var lat = parseFloat(coords[0]);
             var lon = parseFloat(coords[1]);
             if (!isFinite(lat) || !isFinite(lon)) return;
-            var marker = DG.marker([lat, lon]).bindPopup(
+            var marker = L.marker([lat, lon]).bindPopup(
               '<b>' + incident.title + '</b><br>' + (incident.description || '')
             );
             incidentsLayer.addLayer(marker);
@@ -70,7 +76,7 @@ function initMap() {
             var lon = parseFloat(coords[1]);
             if (!isFinite(lat) || !isFinite(lon)) return;
             
-            var circle = DG.circle([lat, lon], {
+            var circle = L.circle([lat, lon], {
               radius: patrol.radius_m || 100,
               color: '#00A8A8',
               fillColor: '#00A8A8',
@@ -95,12 +101,7 @@ function initMap() {
             var lat = parseFloat(coords[0]);
             var lon = parseFloat(coords[1]);
             if (!isFinite(lat) || !isFinite(lon)) return;
-            var marker = DG.marker([lat, lon], {
-              icon: DG.icon({
-                iconUrl: 'https://maps.api.2gis.ru/2.0/img/marker.png',
-                iconSize: [25, 41]
-              })
-            }).bindPopup('<b>' + (cam.name || 'Камера') + '</b><br>' + (cam.description || ''));
+            var marker = L.marker([lat, lon]).bindPopup('<b>' + (cam.name || 'Камера') + '</b><br>' + (cam.description || ''));
             camerasLayer.addLayer(marker);
           }
         });
@@ -123,7 +124,7 @@ function initMap() {
             else if (traffic.severity === 'medium') speed = 50;
             else if (traffic.severity === 'low') speed = 70;
             var color = speed <= 30 ? '#d32f2f' : (speed <= 50 ? '#f57c00' : '#388e3c');
-            var circle = DG.circle([lat, lon], {
+            var circle = L.circle([lat, lon], {
               radius: 120,
               color: color,
               fillColor: color,
@@ -161,10 +162,9 @@ function initMap() {
       });
     });
 
-    setTimeout(function() {
-      map.invalidateSize();
-    }, 100);
-  });
+  setTimeout(function() {
+    map.invalidateSize();
+  }, 100);
 }
 
 try {
