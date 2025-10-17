@@ -1,0 +1,403 @@
+version: '3.8'
+
+services:
+  # API Gateway
+  api-gateway:
+    build: ./services/api_gateway
+    ports:
+      - "9000:8000"
+    environment:
+      - ENVIRONMENT=development
+    depends_on:
+      - user-service
+      - incident-service
+      - traffic-service
+      - news-service
+      - chat-service
+      - analytics-service
+      - traffic-analytics-service
+      - schedule-service
+      - notification-service
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # User Service
+  user-service:
+    build: ./services/user_service
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://user:password@user-db:5432/user_service
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=your-jwt-secret-key
+    depends_on:
+      - user-db
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Incident Service
+  incident-service:
+    build: ./services/incident_service
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql://user:password@incident-db:5432/incident_service
+      - REDIS_URL=redis://redis:6379/1
+    depends_on:
+      - incident-db
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Traffic Service
+  traffic-service:
+    build: ./services/traffic_service
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgresql://user:password@traffic-db:5432/traffic_service
+      - REDIS_URL=redis://redis:6379/2
+      - TIMESCALE_URL=postgresql://user:password@traffic-db:5432/traffic_service
+    depends_on:
+      - traffic-db
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # News Service
+  news-service:
+    build: ./services/news_service
+    ports:
+      - "8004:8004"
+    environment:
+      - DATABASE_URL=postgresql://user:password@news-db:5432/news_service
+      - REDIS_URL=redis://redis:6379/3
+    depends_on:
+      - news-db
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Chat Service
+  chat-service:
+    build: ./services/chat_service
+    ports:
+      - "8005:8005"
+    environment:
+      - DATABASE_URL=postgresql://user:password@chat-db:5432/chat_service
+      - REDIS_URL=redis://redis:6379/4
+    depends_on:
+      - chat-db
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Analytics Service
+  analytics-service:
+    build: ./services/analytics_service
+    ports:
+      - "8006:8006"
+    environment:
+      - DATABASE_URL=postgresql://user:password@analytics-db:5432/analytics_service
+      - REDIS_URL=redis://redis:6379/5
+    depends_on:
+      - analytics-db
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Traffic Analytics Service
+  traffic-analytics-service:
+    build: ./services/traffic_analytics_service
+    ports:
+      - "8007:8007"
+    environment:
+      - DATABASE_URL=postgresql://user:password@traffic-analytics-db:5432/traffic_analytics_service
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - REDIS_URL=redis://redis:6379/6
+    depends_on:
+      - traffic-analytics-db
+      - clickhouse
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Schedule Service
+  schedule-service:
+    build: ./services/schedule_service
+    ports:
+      - "8008:8008"
+    environment:
+      - DATABASE_URL=postgresql://user:password@schedule-db:5432/schedule_service
+      - REDIS_URL=redis://redis:6379/7
+    depends_on:
+      - schedule-db
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Notification Service
+  notification-service:
+    build: ./services/notification_service
+    ports:
+      - "8009:8009"
+    environment:
+      - DATABASE_URL=postgresql://user:password@notification-db:5432/notification_service
+      - REDIS_URL=redis://redis:6379/8
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=your-email@gmail.com
+      - SMTP_PASSWORD=your-app-password
+    depends_on:
+      - notification-db
+      - redis
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Databases
+  user-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=user_service
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  incident-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=incident_service
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - incident_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  traffic-db:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      - POSTGRES_DB=traffic_service
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - traffic_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  news-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=news_service
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - news_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  chat-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=chat_service
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - chat_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  analytics-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=analytics_service
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - analytics_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  traffic-analytics-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=traffic_analytics_service
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - traffic_analytics_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  schedule-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=schedule_service
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - schedule_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  notification-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=notification_service
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - notification_db_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # ClickHouse for analytics
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    environment:
+      - CLICKHOUSE_DB=traffic_analytics
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Redis for caching and message queuing
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # RabbitMQ for message queuing
+  rabbitmq:
+    image: rabbitmq:3-management
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "15672:15672"  # Management UI
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Logging
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    volumes:
+      - ./monitoring/logstash/pipeline:/usr/share/logstash/pipeline
+      - ./monitoring/logstash/config:/usr/share/logstash/config
+    depends_on:
+      - elasticsearch
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+volumes:
+  user_db_data:
+  incident_db_data:
+  traffic_db_data:
+  news_db_data:
+  chat_db_data:
+  analytics_db_data:
+  traffic_analytics_db_data:
+  schedule_db_data:
+  notification_db_data:
+  clickhouse_data:
+  redis_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:
+  elasticsearch_data:
+
+networks:
+  microservices-network:
+    driver: bridge
+

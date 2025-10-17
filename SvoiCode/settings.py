@@ -26,7 +26,17 @@ SECRET_KEY = 'django-insecure-7+wv#q5@q#12w&ral5(p$&_-br-o6#5q-ldlhn@#6oh&=+5r2k
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['itgol.ru', '185.254.67.48', 'www.itgol.ru', '127.0.0.1']
+ALLOWED_HOSTS = [
+    'itgol.ru', 
+    '185.254.67.48', 
+    'www.itgol.ru', 
+    '127.0.0.1', 
+    'localhost',
+    'localhost:8000',
+    'localhost:9000',
+    '127.0.0.1:8000',
+    '127.0.0.1:9000'
+]
 
 
 # Application definition
@@ -129,6 +139,28 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Microservices configuration
+MICROSERVICES = {
+    'user_service': 'http://127.0.0.1:8001',
+    'incident_service': 'http://127.0.0.1:8002',
+    'traffic_service': 'http://127.0.0.1:8003',
+    'news_service': 'http://127.0.0.1:8004',
+    'chat_service': 'http://127.0.0.1:8005',
+    'analytics_service': 'http://127.0.0.1:8006',
+    'traffic_analytics_service': 'http://127.0.0.1:8007',
+    'schedule_service': 'http://127.0.0.1:8008',
+    'notification_service': 'http://127.0.0.1:8009',
+}
+
+# API Gateway configuration
+API_GATEWAY_URL = 'http://127.0.0.1:9000'
+
+# Microservices timeout settings
+MICROSERVICE_TIMEOUT = 30
+
+# Fallback to local database when microservices are unavailable
+USE_MICROSERVICES = False  # Set to True to use microservices
 
 # Настройки сессий
 SESSION_COOKIE_AGE = 86400  # 24 часа

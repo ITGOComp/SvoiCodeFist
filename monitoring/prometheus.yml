@@ -1,0 +1,85 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'user-service'
+    static_configs:
+      - targets: ['user-service:8001']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'incident-service'
+    static_configs:
+      - targets: ['incident-service:8002']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'traffic-service'
+    static_configs:
+      - targets: ['traffic-service:8003']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'news-service'
+    static_configs:
+      - targets: ['news-service:8004']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'chat-service'
+    static_configs:
+      - targets: ['chat-service:8005']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'analytics-service'
+    static_configs:
+      - targets: ['analytics-service:8006']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'traffic-analytics-service'
+    static_configs:
+      - targets: ['traffic-analytics-service:8007']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'schedule-service'
+    static_configs:
+      - targets: ['schedule-service:8008']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'notification-service'
+    static_configs:
+      - targets: ['notification-service:8009']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['user-db:5432', 'incident-db:5432', 'traffic-db:5432', 'news-db:5432', 'chat-db:5432', 'analytics-db:5432', 'traffic-analytics-db:5432', 'schedule-db:5432', 'notification-db:5432']
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq:15692']
+
